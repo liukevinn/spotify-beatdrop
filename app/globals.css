@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0a0a0b;
+  --color-surface: #141416;
+  --color-raised: #1c1c1f;
+  --color-line: #2a2a2e;
+  --color-fg: #f4f4f5;
+  --color-muted: #9b9ba3;
+  --color-faint: #5f5f66;
+  --color-volt: #d7ff3a;
+  --color-volt-dim: #9dbb2a;
+  --color-danger: #ff5d5d;
+  --color-warn: #ffb547;
+
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --font-display: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-ink text-fg font-sans antialiased;
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-volt);
+    outline-offset: 2px;
+  }
+}
+
+@utility pt-safe {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility px-safe {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
