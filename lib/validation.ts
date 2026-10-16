@@ -12,6 +12,7 @@ const restMs = z.number().int().min(REST_MS.min).max(REST_MS.max);
 
 const restSource = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("liked") }),
+  z.object({ kind: z.literal("tagged") }),
   z.object({
     kind: z.literal("playlist"),
     id: z.string().regex(/^[A-Za-z0-9]{1,64}$/, "Invalid playlist id"),

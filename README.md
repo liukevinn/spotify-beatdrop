@@ -97,7 +97,7 @@ Open <http://127.0.0.1:3000>. Local dev covers login, tagging, and cueing, becau
 
 1. **Settings → Device:** open Spotify on your phone, tap **Refresh**, then tap your phone to link it.
 2. **Settings → Playback:** set your default rest (up to 5:00, e.g. 3:30), the lead time for "Start in…", queue mode, and repeat avoidance.
-3. Rests keep whatever you're playing. If nothing is playing, DropSet plays your **Liked Songs** (if Home asks, tap **Log in** once to grant access).
+3. **Settings → Backup music:** rests keep whatever you're playing; this is what DropSet plays when nothing is, and after each drop song. It defaults to **Liked Songs**; you can pick one of your own playlists or your other drop songs. If it asks, tap **Grant playlist access** and log in again.
 4. **Settings → Shortcut tokens:** create a token. It's shown **once**, so copy it into the Shortcut below.
 
 ## iOS Shortcut

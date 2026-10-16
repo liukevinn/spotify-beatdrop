@@ -8,12 +8,13 @@ import {
   devicesSchema,
   fillerTrackSchema,
   playlistItemsSchema,
+  playlistsSchema,
   profileSchema,
   savedTracksSchema,
   trackItemSchema,
 } from "@/lib/spotify/types";
 import type { Filler } from "@/lib/logic/segue";
-import type { Device, TrackInfo } from "@/lib/types";
+import type { Device, PlaylistInfo, TrackInfo } from "@/lib/types";
 import { sleep } from "@/lib/utils";
 
 const API_BASE = "https://api.spotify.com/v1";
@@ -294,4 +295,23 @@ export async function getPlaylistFillers(
     }),
   );
   return pages.flat().filter((f) => f !== null);
+}
+
+/** Playlists the user owns or collaborates on: the only ones whose tracks a dev-mode app can read. */
+export async function getMyPlaylists(userId: string, spotifyUserId: string): Promise<PlaylistInfo[]> {
+  const res = await spotifyFetch(userId, "/me/playlists", { query: { limit: "50" } });
+  const parsed = playlistsSchema.safeParse(await res.json());
+  if (!parsed.success) throw new AppError("SPOTIFY_ERROR");
+  return parsed.data.items.flatMap((p) =>
+    p && (p.owner.id === spotifyUserId || p.collaborative)
+      ? [
+          {
+            id: p.id,
+            name: p.name,
+            trackCount: p.items?.total ?? p.tracks?.total ?? null,
+            imageUrl: p.images?.[0]?.url ?? null,
+          },
+        ]
+      : [],
+  );
 }

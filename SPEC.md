@@ -109,7 +109,7 @@ Key properties:
 | F12 | PWA | Manifest, icons, standalone display, iOS meta tags, mobile-first UI |
 | F13 | Start rest (v1.1) | Plays rest music now so the chosen drop hits exactly `rest` from the tap (Section 11.5); PWA and bearer token (Shortcut) |
 | F14 | Up next (v1.1) | Pick the drop for the next set on Home; stored server-side so the Shortcut uses it; one-shot (cleared once used) |
-| F15 | Rest settings (v1.1) | Default rest (0:30–5:00, default 3:30), per-set rest chips on Home, backup music from Liked Songs (v1.2: no picker; `rest_source` stays in the data model, `NULL` = Liked Songs) |
+| F15 | Rest settings (v1.1) | Default rest (0:30–5:00, default 3:30), per-set rest chips on Home, backup music source: Liked Songs (default), an owned/collaborative playlist, or the other tagged songs |
 
 ## 5. Non-goals for v1
 
@@ -366,7 +366,7 @@ alter table users add column scopes text;
 
 alter table settings
   add column rest_ms           integer not null default 210000 check (rest_ms between 30000 and 300000),
-  add column rest_source       text,   -- 'liked' or a Spotify playlist id; NULL = the other tagged songs
+  add column rest_source       text,   -- 'liked', 'tagged', or a Spotify playlist id; NULL = Liked Songs (v1.2)
   add column rest_source_name  text,
   add column next_drop_id      uuid references drops(id) on delete set null;
 ```
@@ -458,7 +458,8 @@ If `users.needs_reauth` is true → 401 `REAUTH_REQUIRED`, message `"Log in to D
 **Settings / tokens / history**
 
 - `GET /api/settings` → settings object.
-- `PATCH /api/settings` body any of `{ leadMs, queueMode, avoidRepeatWithin, restMs, restSource, nextDropId }` → validated with the same ranges as the DB checks. `restSource` is `null`, `{ kind: "liked" }`, or `{ kind: "playlist", id, name }`. `nextDropId` must belong to the user (else 404).
+- `GET /api/playlists` (v1.1) → `{ playlists: [{ id, name, trackCount, imageUrl }] }`, owned/collaborative only; 403 `PLAYLIST_ACCESS_REQUIRED` without the scopes.
+- `PATCH /api/settings` body any of `{ leadMs, queueMode, avoidRepeatWithin, restMs, restSource, nextDropId }` → validated with the same ranges as the DB checks. `restSource` is `null` (= Liked Songs), `{ kind: "liked" }`, `{ kind: "tagged" }` (the other drop songs), or `{ kind: "playlist", id, name }`. `nextDropId` must belong to the user (else 404).
 - `GET /api/tokens` → `{ tokens: [{ id, label, createdAt, lastUsedAt, revoked }] }` (never returns the raw token or hash).
 - `POST /api/tokens` body `{ label }` → generates 32 random bytes as base64url, stores the sha256 hash → `{ id, token }` (**raw token returned only this once**).
 - `DELETE /api/tokens/:id` → sets `revoked_at`.
@@ -506,6 +507,7 @@ Top to bottom:
 - **Device:** a list from `GET /api/devices` with a refresh button; tap to link. Show the linked device name. Helper text: "Open Spotify on your phone first so it appears here."
 - **Default rest** (v1.1): slider 0:30–5:00, step 15 s.
 - **Lead time:** slider 5–60 s, step 1 s (used by "Start in Ns").
+- **Backup music** (v1.1): played only when nothing is playing at Start rest, and queued behind drop songs. Liked Songs (default when nothing is saved), the user's own/collaborative playlists (`GET /api/playlists`), or "My other drop songs" (`tagged`). Collapsed to the current choice with a Change button. Without the scopes, show "Grant playlist access" → `/api/auth/login`.
 - **Queue mode:** Shuffle / Sequential.
 - **Avoid repeats within:** stepper 0–20 sets.
 - **Shortcut tokens:** create (label input) → modal showing the token once with a copy button and the Shortcut instructions (Section 14); list with revoke.
@@ -610,6 +612,7 @@ fillers ("backup music") = rest-source tracks (100 most recent likes by default,
           minus local files, episodes, tracks < 30 s, the drop itself,
           and every tagged drop (so drops aren't spoiled)
           if that leaves nothing → the other enabled drops
+          source `tagged` → only the other enabled drops
           no library scopes → the other enabled drops (PLAYLIST_ACCESS_REQUIRED only if there are none)
           loading is required (errors surface, e.g. PLAYLIST_ACCESS_REQUIRED) only when
           !playing and cut > 0; otherwise best effort, falling back to the other drops

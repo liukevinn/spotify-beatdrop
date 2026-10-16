@@ -339,6 +339,26 @@ describe("startRest", () => {
     await expect(startRest("u1", { restMs: 210_000, source: "pwa" })).resolves.toMatchObject({ ok: true });
   });
 
+  it("defaults backup music to Liked Songs when no source is saved", async () => {
+    vi.mocked(spotify.getLikedFillers).mockResolvedValue([
+      { uri: "spotify:track:f1", trackId: "f1", durationMs: 240_000 },
+    ]);
+    await startRest("u1", { restMs: 210_000, source: "pwa" });
+    expect(new Set(vi.mocked(playback.playQueueOnDevice).mock.calls[0]![1].uris)).toEqual(
+      new Set(["spotify:track:f1"]),
+    );
+  });
+
+  it("uses only the other drop songs when that's the chosen source, without reading Spotify", async () => {
+    vi.mocked(dropsDb.listDrops).mockResolvedValue([target, other]);
+    vi.mocked(settingsDb.getSettings).mockResolvedValue({ ...settings, restSource: { kind: "tagged" } });
+    await startRest("u1", { dropId: target.id, restMs: 210_000, source: "pwa" });
+    expect(new Set(vi.mocked(playback.playQueueOnDevice).mock.calls[0]![1].uris)).toEqual(
+      new Set(["spotify:track:t3"]),
+    );
+    expect(spotify.getLikedFillers).not.toHaveBeenCalled();
+  });
+
   it("falls back to tagged songs when Liked Songs can't be read", async () => {
     vi.mocked(dropsDb.listDrops).mockResolvedValue([target, other]);
     vi.mocked(usersDb.getUserById).mockResolvedValue({ scopes: "user-read-playback-state" } as never);

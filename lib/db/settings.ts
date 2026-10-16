@@ -17,10 +17,12 @@ const COLUMNS =
   "lead_ms, queue_mode, avoid_repeat_within, device_id, device_name, rest_ms, rest_source, rest_source_name, next_drop_id";
 
 const LIKED = "liked";
+const TAGGED = "tagged";
 
 function toRestSource(row: Pick<SettingsRow, "rest_source" | "rest_source_name">): RestSource | null {
   if (!row.rest_source) return null;
   if (row.rest_source === LIKED) return { kind: "liked" };
+  if (row.rest_source === TAGGED) return { kind: "tagged" };
   return { kind: "playlist", id: row.rest_source, name: row.rest_source_name ?? "Playlist" };
 }
 
@@ -67,7 +69,8 @@ export async function updateSettings(userId: string, patch: SettingsPatch): Prom
   if (patch.nextDropId !== undefined) row.next_drop_id = patch.nextDropId;
   if (patch.restSource !== undefined) {
     const source = patch.restSource;
-    row.rest_source = source === null ? null : source.kind === "liked" ? LIKED : source.id;
+    row.rest_source =
+      source === null ? null : source.kind === "playlist" ? source.id : source.kind === "liked" ? LIKED : TAGGED;
     row.rest_source_name = source?.kind === "playlist" ? source.name : null;
   }
 

@@ -6,6 +6,7 @@ import {
   getCurrentlyPlaying,
   getDevices,
   getLikedFillers,
+  getMyPlaylists,
   getPlaylistFillers,
   getValidAccessToken,
   spotifyFetch,
@@ -301,6 +302,29 @@ describe("rest filler sources", () => {
     const fillers = await getPlaylistFillers(USER_ID, "pl1");
     expect(fillers.map((f) => f.trackId)).toEqual(["a", "b"]);
     expect(new URL(calls[0]!.url).pathname).toBe("/v1/playlists/pl1/items");
+  });
+
+  it("lists only playlists the user owns or collaborates on", async () => {
+    mockFetch(() =>
+      jsonResponse({
+        items: [
+          {
+            id: "mine",
+            name: "Rest",
+            owner: { id: "spotify-1" },
+            images: [{ url: "https://i/1" }],
+            items: { total: 12 },
+          },
+          { id: "theirs", name: "Beast Mode", owner: { id: "spotify" }, images: null },
+          { id: "collab", name: "Gym Crew", owner: { id: "friend" }, collaborative: true, tracks: { total: 3 } },
+          null,
+        ],
+      }),
+    );
+    await expect(getMyPlaylists(USER_ID, "spotify-1")).resolves.toEqual([
+      { id: "mine", name: "Rest", trackCount: 12, imageUrl: "https://i/1" },
+      { id: "collab", name: "Gym Crew", trackCount: 3, imageUrl: null },
+    ]);
   });
 
   it("checks for every rest scope", () => {

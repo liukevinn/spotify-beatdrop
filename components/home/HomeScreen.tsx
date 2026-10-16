@@ -190,7 +190,7 @@ export function HomeScreen() {
           No phone linked yet.
         </Notice>
       )}
-      {me && !me.playlistAccess && (
+      {me && !me.playlistAccess && settings?.restSource?.kind !== "tagged" && (
         <Notice href="/api/auth/login" linkLabel="Log in">
           Log in again so DropSet can use your Liked Songs.
         </Notice>

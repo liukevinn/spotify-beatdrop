@@ -11,8 +11,9 @@ function otherDropsOf(drop: Drop, enabledDrops: Drop[]): Filler[] {
 
 /**
  * Backup music (spec §11.5), best first: the rest source (default Liked Songs) minus every
- * tagged song (so drops aren't spoiled), else the user's other tagged songs. Without the
- * library scopes, the tagged songs; with none of those either, PLAYLIST_ACCESS_REQUIRED.
+ * tagged song (so drops aren't spoiled), else the user's other tagged songs. Source `tagged`
+ * means only those. Without the library scopes, the tagged songs; with none of those either,
+ * PLAYLIST_ACCESS_REQUIRED.
  */
 export async function loadFillers(
   userId: string,
@@ -21,13 +22,14 @@ export async function loadFillers(
   enabledDrops: Drop[],
 ): Promise<Filler[]> {
   const otherDrops = otherDropsOf(drop, enabledDrops);
+  if (source?.kind === "tagged") return otherDrops;
   const user = await getUserById(userId);
   if (!hasRestScopes(user?.scopes ?? null)) {
     if (otherDrops.length > 0) return otherDrops;
     throw new AppError("PLAYLIST_ACCESS_REQUIRED");
   }
 
-  const effective = source ?? { kind: "liked" };
+  const effective = source ?? ({ kind: "liked" } as const);
   const fromSource =
     effective.kind === "liked" ? await getLikedFillers(userId) : await getPlaylistFillers(userId, effective.id);
   const tagged = new Set(enabledDrops.map((d) => d.trackId));

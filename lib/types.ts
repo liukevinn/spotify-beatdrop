@@ -19,8 +19,8 @@ export interface Drop {
   updatedAt: string;
 }
 
-/** Where backup music comes from. `null` in settings = Liked Songs (the only choice the UI offers today). */
-export type RestSource = { kind: "liked" } | { kind: "playlist"; id: string; name: string };
+/** Where backup music comes from. `null` in settings = Liked Songs (the default). */
+export type RestSource = { kind: "liked" } | { kind: "tagged" } | { kind: "playlist"; id: string; name: string };
 
 export interface Settings {
   leadMs: number;
@@ -32,6 +32,14 @@ export interface Settings {
   restSource: RestSource | null;
   /** "Up next": the drop the next rest/cue uses. Cleared once used. */
   nextDropId: string | null;
+}
+
+/** A playlist the user can pick as a rest source. */
+export interface PlaylistInfo {
+  id: string;
+  name: string;
+  trackCount: number | null;
+  imageUrl: string | null;
 }
 
 export interface SetRecord {
