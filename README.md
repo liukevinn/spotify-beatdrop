@@ -45,7 +45,7 @@ The app owner needs Spotify Premium, and so does every user, because playback co
 
 ### 2. Supabase
 
-Create a project, then run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) in the SQL editor (or `supabase db push`). Copy the **Project URL** and the **service_role** key (Settings → API). Supabase is used only as a database: no Supabase Auth, no browser client, and RLS is on with no policies. Either the legacy `service_role` JWT or a new `sb_secret_…` key works.
+Create a project, then run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) and [`0002_rest_segue.sql`](supabase/migrations/0002_rest_segue.sql), in order, in the SQL editor (or `supabase db push`). Copy the **Project URL** and the **service_role** key (Settings → API). Supabase is used only as a database: no Supabase Auth, no browser client, and RLS is on with no policies. Either the legacy `service_role` JWT or a new `sb_secret_…` key works.
 
 **Optional, for local development:** with Docker running, `supabase start` spins up a local Postgres with the migration applied (`SUPABASE_URL=http://127.0.0.1:54321`).
 
@@ -96,29 +96,33 @@ Open <http://127.0.0.1:3000>. Local dev covers login, tagging, and cueing, becau
 ## First-time use
 
 1. **Settings → Device:** open Spotify on your phone, tap **Refresh**, then tap your phone to link it.
-2. **Settings → Playback:** set the lead time (5–60 s), reaction offset, queue mode, and repeat avoidance.
-3. **Settings → Shortcut tokens:** create a token. It's shown **once**, so copy it into the Shortcut below.
+2. **Settings → Playback:** set your default rest (up to 5:00, e.g. 3:30), the lead time for "Start in…", reaction offset, queue mode, and repeat avoidance.
+3. **Settings → Rest music:** pick Liked Songs or one of your own playlists to play during rests. If it asks, tap **Grant playlist access** and log in again.
+4. **Settings → Shortcut tokens:** create a token. It's shown **once**, so copy it into the Shortcut below.
 
 ## iOS Shortcut
 
-**"Cue Set"**
+**"Start Rest"** (recommended for the Action button: press it when you rack the weight)
 
 1. **Get Contents of URL**
-   - URL: `https://<your-app>.vercel.app/api/cue`
+   - URL: `https://<your-app>.vercel.app/api/rest`
    - Method: `POST`
    - Headers: `Authorization` = `Bearer <your token>`
    - Request Body: JSON (empty)
 2. **If** the result's `ok` has any value → **Get Dictionary Value** `message`. Otherwise → get `error` → `message`.
-3. **Show Notification** with that value (e.g. `▶ Song Name — drop in 20s`).
+3. **Show Notification** with that value (e.g. `⏱ 3:30 rest → Song Name`).
 
-Bind it under **Settings → Action Button → Shortcut → "Cue Set"** (iPhone 15 Pro and later). On other iPhones, use **Settings → Accessibility → Touch → Back Tap → Double Tap → "Cue Set"**.
+It plays rest music from the start of a song, then switches to your **Up next** song (or the next one from the queue) so its drop lands exactly when the default rest ends. To override the rest, set the Request Body to JSON `{ "restMs": 180000 }`.
+
+Bind it under **Settings → Action Button → Shortcut → "Start Rest"** (iPhone 15 Pro and later). On other iPhones, use **Settings → Accessibility → Touch → Back Tap → Double Tap → "Start Rest"**.
 
 Optional shortcuts, built the same way:
 
+- **"Cue Set"**: URL `/api/cue`. Starts the next song right before its drop (the lead time), with no rest music.
 - **"Mark Drop"**: URL `/api/drops/mark`. Works with Siri ("Hey Siri, mark drop").
 - **"Nudge Later"**: URL `/api/cue/nudge-last`, body `{ "deltaMs": 1000 }`.
 
-Only these three endpoints accept bearer tokens. Everything else requires the browser session. Revoke a token in Settings and it stops working immediately.
+Only these four endpoints (`/api/rest`, `/api/cue`, `/api/drops/mark`, `/api/cue/nudge-last`) accept bearer tokens. Everything else requires the browser session. Revoke a token in Settings and it stops working immediately.
 
 ## Testing
 

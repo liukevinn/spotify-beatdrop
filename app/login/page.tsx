@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { pill, SpotifyIcon } from "@/components/ui";
 import { getSessionUserId } from "@/lib/auth/session";
 import { getUserById } from "@/lib/db/users";
 import { ERRORS, type ErrorCode } from "@/lib/errors";
@@ -27,31 +28,29 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-between px-safe pt-safe pb-safe">
       <div className="pt-[18vh]">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-volt">DropSet</p>
-        <h1 className="mt-4 font-display text-[44px] font-extrabold leading-[0.95] tracking-tight">
+        <p className="text-sm font-bold text-muted">DropSet</p>
+        <h1 className="mt-3 text-[40px] font-bold leading-[1.05] tracking-tight">
           Unrack
           <br />
           on the drop.
         </h1>
-        <p className="mt-5 max-w-xs text-[17px] leading-relaxed text-muted">
-          One tap starts your song twenty seconds before the beat drops. Set up during the build. Lift when it hits.
+        <p className="mt-5 max-w-xs text-base leading-relaxed text-muted">
+          Rest music plays while you recover, then your song hits its drop the moment your rest ends.
         </p>
       </div>
 
       <div className="pb-8">
         {error && (
-          <p role="alert" className="mb-4 rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <p role="alert" className="mb-4 rounded-lg bg-surface px-4 py-3 text-sm text-danger">
             {error}
           </p>
         )}
         {/* Plain <a>: the API route redirects to Spotify. */}
-        <a
-          href="/api/auth/login"
-          className="flex min-h-14 w-full items-center justify-center rounded-2xl bg-volt text-[17px] font-bold text-ink active:bg-volt-dim"
-        >
-          Log in with Spotify
+        <a href="/api/auth/login" className={`${pill.primary} min-h-14 w-full text-base`}>
+          <SpotifyIcon className="h-6 w-6" />
+          Continue with Spotify
         </a>
-        <p className="mt-4 text-center text-xs text-faint">Requires Spotify Premium.</p>
+        <p className="mt-4 text-center text-xs text-faint">Requires Spotify Premium. Not affiliated with Spotify.</p>
       </div>
     </main>
   );

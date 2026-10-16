@@ -9,7 +9,20 @@ export const SPOTIFY_SCOPES = [
   "user-read-playback-state",
   "user-modify-playback-state",
   "user-read-currently-playing",
+  // Rest fillers (spec §11.5): Liked Songs and the user's own playlists.
+  "user-library-read",
+  "playlist-read-private",
+  "playlist-read-collaborative",
 ] as const;
+
+/** Scopes "Start rest" needs to read a filler source. */
+export const REST_SCOPES = ["user-library-read", "playlist-read-private", "playlist-read-collaborative"] as const;
+
+/** True when a stored scope string (space-separated) includes every rest scope. */
+export function hasRestScopes(scopes: string | null): boolean {
+  const granted = new Set((scopes ?? "").split(" "));
+  return REST_SCOPES.every((s) => granted.has(s));
+}
 
 /** Thrown when Spotify's token endpoint rejects a request (e.g. `invalid_grant`). */
 export class OAuthError extends Error {

@@ -12,7 +12,7 @@ export interface AuthedUser {
 }
 
 export interface RequireUserOptions {
-  /** Accept `Authorization: Bearer <shortcut token>`. Only cue, mark, and nudge-last set this. */
+  /** Accept `Authorization: Bearer <shortcut token>`. Only cue, rest, mark, and nudge-last set this. */
   allowBearer?: boolean;
   /** Return users flagged `needs_reauth` instead of rejecting them (for `/api/me`). */
   allowNeedsReauth?: boolean;

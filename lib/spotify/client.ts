@@ -6,10 +6,15 @@ import {
   apiErrorSchema,
   currentlyPlayingSchema,
   devicesSchema,
+  fillerTrackSchema,
+  playlistItemsSchema,
+  playlistsSchema,
   profileSchema,
+  savedTracksSchema,
   trackItemSchema,
 } from "@/lib/spotify/types";
-import type { Device, TrackInfo } from "@/lib/types";
+import type { Filler } from "@/lib/logic/segue";
+import type { Device, PlaylistInfo, TrackInfo } from "@/lib/types";
 import { sleep } from "@/lib/utils";
 
 const API_BASE = "https://api.spotify.com/v1";
@@ -64,6 +69,7 @@ async function refreshForUser(userId: string, refreshTokenEnc: string): Promise<
     accessTokenExpiresAt: expiresAtIso(tokens.expires_in),
     // Spotify may rotate the refresh token; persist the new one if so.
     refreshTokenEnc: tokens.refresh_token ? encrypt(tokens.refresh_token) : undefined,
+    scopes: tokens.scope,
   });
   return tokens.access_token;
 }
@@ -210,15 +216,97 @@ export async function transferPlayback(userId: string, deviceId: string): Promis
   await spotifyFetch(userId, "/me/player", { method: "PUT", body: { device_ids: [deviceId], play: false } });
 }
 
+/**
+ * Plays `uris` in order, starting the first at `positionMs`. For a multi-track queue,
+ * `offset: 0` pins the first track even if the device has shuffle on.
+ */
 export async function startPlayback(
   userId: string,
   deviceId: string,
-  trackUri: string,
+  uris: string[],
   positionMs: number,
 ): Promise<void> {
   await spotifyFetch(userId, "/me/player/play", {
     method: "PUT",
     query: { device_id: deviceId },
-    body: { uris: [trackUri], position_ms: positionMs },
+    body: { uris, position_ms: positionMs, ...(uris.length > 1 ? { offset: { position: 0 } } : {}) },
   });
+}
+
+/**
+ * Turns off shuffle and repeat so a segue queue plays straight through.
+ * Best effort: a sleeping device 404s here, and playback recovery handles that.
+ */
+export async function playStraightThrough(userId: string, deviceId: string): Promise<void> {
+  const results = await Promise.allSettled([
+    spotifyFetch(userId, "/me/player/shuffle", { method: "PUT", query: { state: "false", device_id: deviceId } }),
+    spotifyFetch(userId, "/me/player/repeat", { method: "PUT", query: { state: "off", device_id: deviceId } }),
+  ]);
+  for (const r of results) {
+    if (r.status === "rejected") console.warn("[spotify] shuffle/repeat reset failed:", (r.reason as Error)?.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Rest filler sources (spec §11.5). Need the scopes in REST_SCOPES.
+// ---------------------------------------------------------------------------
+
+/** How many tracks a filler source contributes (2 pages of 50, fetched in parallel). */
+export const FILLER_SOURCE_LIMIT = 100;
+const PAGE_SIZE = 50;
+const PAGE_OFFSETS = Array.from({ length: FILLER_SOURCE_LIMIT / PAGE_SIZE }, (_, i) => i * PAGE_SIZE);
+
+function toFiller(raw: unknown): (Filler & { trackId: string }) | null {
+  const parsed = fillerTrackSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  const t = parsed.data;
+  if (t.is_local || !t.id || (t.type !== undefined && t.type !== "track")) return null;
+  return { uri: t.uri, trackId: t.id, durationMs: t.duration_ms };
+}
+
+/** The most recently liked tracks. */
+export async function getLikedFillers(userId: string): Promise<(Filler & { trackId: string })[]> {
+  const pages = await Promise.all(
+    PAGE_OFFSETS.map(async (offset) => {
+      const res = await spotifyFetch(userId, "/me/tracks", { query: { limit: String(PAGE_SIZE), offset: String(offset) } });
+      const parsed = savedTracksSchema.safeParse(await res.json());
+      if (!parsed.success) throw new AppError("SPOTIFY_ERROR");
+      return parsed.data.items.map((i) => toFiller(i.track));
+    }),
+  );
+  return pages.flat().filter((f) => f !== null);
+}
+
+/** The first tracks of a playlist the user owns or collaborates on (others return no items). */
+export async function getPlaylistFillers(userId: string, playlistId: string): Promise<(Filler & { trackId: string })[]> {
+  const pages = await Promise.all(
+    PAGE_OFFSETS.map(async (offset) => {
+      const res = await spotifyFetch(userId, `/playlists/${encodeURIComponent(playlistId)}/items`, {
+        query: { limit: String(PAGE_SIZE), offset: String(offset) },
+      });
+      const parsed = playlistItemsSchema.safeParse(await res.json());
+      if (!parsed.success) throw new AppError("SPOTIFY_ERROR");
+      return parsed.data.items.map((i) => toFiller(i.item ?? i.track));
+    }),
+  );
+  return pages.flat().filter((f) => f !== null);
+}
+
+/** Playlists the user owns or collaborates on: the only ones whose tracks a dev-mode app can read. */
+export async function getMyPlaylists(userId: string, spotifyUserId: string): Promise<PlaylistInfo[]> {
+  const res = await spotifyFetch(userId, "/me/playlists", { query: { limit: "50" } });
+  const parsed = playlistsSchema.safeParse(await res.json());
+  if (!parsed.success) throw new AppError("SPOTIFY_ERROR");
+  return parsed.data.items.flatMap((p) =>
+    p && (p.owner.id === spotifyUserId || p.collaborative)
+      ? [
+          {
+            id: p.id,
+            name: p.name,
+            trackCount: p.items?.total ?? p.tracks?.total ?? null,
+            imageUrl: p.images?.[0]?.url ?? null,
+          },
+        ]
+      : [],
+  );
 }

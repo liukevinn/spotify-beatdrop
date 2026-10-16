@@ -1,20 +1,22 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ink: #0a0a0b;
-  --color-surface: #141416;
-  --color-raised: #1c1c1f;
-  --color-line: #2a2a2e;
-  --color-fg: #f4f4f5;
-  --color-muted: #9b9ba3;
-  --color-faint: #5f5f66;
-  --color-volt: #d7ff3a;
-  --color-volt-dim: #9dbb2a;
-  --color-danger: #ff5d5d;
-  --color-warn: #ffb547;
+  /* Spotify's dark UI palette (developer.spotify.com/documentation/design). */
+  --color-ink: #121212;
+  --color-surface: #1f1f1f;
+  --color-raised: #2a2a2a;
+  --color-line: #3e3e3e;
+  --color-fg: #ffffff;
+  --color-muted: #b3b3b3;
+  --color-faint: #7c7c7c;
+  --color-accent: #1ed760;
+  --color-accent-press: #1aa34a;
+  --color-danger: #f3727f;
+  --color-warn: #ffa42b;
 
-  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-  --font-display: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+  /* Spotify's guidelines: use the platform's default sans-serif. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 @layer base {
@@ -24,6 +26,9 @@
   }
   body {
     @apply bg-ink text-fg font-sans antialiased;
+    /* The soft top fade Spotify's home screen uses. */
+    background-image: linear-gradient(to bottom, #2a2a2a 0, #121212 320px);
+    background-repeat: no-repeat;
     min-height: 100dvh;
     overscroll-behavior-y: none;
   }
@@ -32,7 +37,7 @@
     cursor: pointer;
   }
   :focus-visible {
-    outline: 2px solid var(--color-volt);
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 }

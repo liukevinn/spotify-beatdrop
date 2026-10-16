@@ -33,6 +33,7 @@ async function createUser(tag: string) {
     refreshTokenEnc: "enc",
     accessToken: "access",
     accessTokenExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    scopes: null,
   });
   await settings.ensureSettings(user.id);
   return user.id;
@@ -61,6 +62,7 @@ describe.skipIf(!run)("lib/db against Supabase", () => {
       refreshTokenEnc: "enc2",
       accessToken: "access2",
       accessTokenExpiresAt: new Date().toISOString(),
+      scopes: "user-read-playback-state",
     });
     expect(again.id).toBe(userId);
     const row = await users.getUserById(userId);

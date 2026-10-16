@@ -2,7 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { decrypt, encrypt } from "@/lib/crypto";
 import type { UserRow } from "@/lib/db/users";
 import { AppError } from "@/lib/errors";
-import { getCurrentlyPlaying, getDevices, getValidAccessToken, spotifyFetch } from "@/lib/spotify/client";
+import {
+  getCurrentlyPlaying,
+  getDevices,
+  getLikedFillers,
+  getMyPlaylists,
+  getPlaylistFillers,
+  getValidAccessToken,
+  spotifyFetch,
+} from "@/lib/spotify/client";
+import { hasRestScopes } from "@/lib/spotify/oauth";
 import { emptyResponse, jsonResponse, mockFetch, spotifyError } from "./helpers";
 
 vi.mock("@/lib/db/users", () => ({
@@ -24,6 +33,7 @@ function freshUser(overrides: Partial<UserRow> = {}): UserRow {
     access_token: "access-cached",
     access_token_expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
     needs_reauth: false,
+    scopes: null,
     ...overrides,
   };
 }
@@ -247,5 +257,60 @@ describe("typed calls", () => {
     await expect(getDevices(USER_ID)).resolves.toEqual([
       { id: "d1", name: "iPhone", type: "Smartphone", isActive: true },
     ]);
+  });
+});
+
+describe("rest filler sources", () => {
+  const track = (id: string | null, extra: Record<string, unknown> = {}) => ({
+    id,
+    uri: id ? `spotify:track:${id}` : "spotify:local:x",
+    type: "track",
+    duration_ms: 200000,
+    ...extra,
+  });
+
+  it("reads two pages of Liked Songs and drops local files", async () => {
+    const calls = mockFetch(
+      () => jsonResponse({ items: [{ track: track("a") }, { track: track(null, { is_local: true }) }] }),
+      () => jsonResponse({ items: [{ track: track("b") }] }),
+    );
+    await expect(getLikedFillers(USER_ID)).resolves.toEqual([
+      { uri: "spotify:track:a", trackId: "a", durationMs: 200000 },
+      { uri: "spotify:track:b", trackId: "b", durationMs: 200000 },
+    ]);
+    expect(calls.map((c) => new URL(c.url).search)).toEqual(["?limit=50&offset=0", "?limit=50&offset=50"]);
+  });
+
+  it("reads playlist items from /items, accepting the new `item` and old `track` fields, and skips episodes", async () => {
+    const calls = mockFetch(
+      () => jsonResponse({ items: [{ item: track("a") }, { item: track("ep", { type: "episode" }) }, { track: track("b") }] }),
+      () => jsonResponse({ items: [] }),
+    );
+    const fillers = await getPlaylistFillers(USER_ID, "pl1");
+    expect(fillers.map((f) => f.trackId)).toEqual(["a", "b"]);
+    expect(new URL(calls[0]!.url).pathname).toBe("/v1/playlists/pl1/items");
+  });
+
+  it("lists only playlists the user owns or collaborates on", async () => {
+    mockFetch(() =>
+      jsonResponse({
+        items: [
+          { id: "mine", name: "Rest", owner: { id: "spotify-1" }, images: [{ url: "https://i/1" }], items: { total: 12 } },
+          { id: "theirs", name: "Beast Mode", owner: { id: "spotify" }, images: null },
+          { id: "collab", name: "Gym Crew", owner: { id: "friend" }, collaborative: true, tracks: { total: 3 } },
+          null,
+        ],
+      }),
+    );
+    await expect(getMyPlaylists(USER_ID, "spotify-1")).resolves.toEqual([
+      { id: "mine", name: "Rest", trackCount: 12, imageUrl: "https://i/1" },
+      { id: "collab", name: "Gym Crew", trackCount: 3, imageUrl: null },
+    ]);
+  });
+
+  it("checks for every rest scope", () => {
+    expect(hasRestScopes(null)).toBe(false);
+    expect(hasRestScopes("user-read-playback-state user-library-read")).toBe(false);
+    expect(hasRestScopes("user-library-read playlist-read-private playlist-read-collaborative user-read-playback-state")).toBe(true);
   });
 });

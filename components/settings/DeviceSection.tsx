@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
-import { Card, SectionLabel, Spinner } from "@/components/ui";
+import { Card, pill, SectionLabel, Spinner } from "@/components/ui";
 import { api, errorMessage } from "@/lib/client/api";
 import type { Device } from "@/lib/types";
 
@@ -59,7 +59,7 @@ export function DeviceSection() {
           type="button"
           onClick={load}
           disabled={loading}
-          className="-mt-2 -mr-2 flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-volt disabled:opacity-50"
+          className={`${pill.secondary} -mt-1 min-h-8 px-3 text-[13px]`}
         >
           {loading && <Spinner />} Refresh
         </button>
@@ -67,24 +67,24 @@ export function DeviceSection() {
       <p className="-mt-1 mb-3 text-sm text-muted">Open Spotify on your phone first so it appears here.</p>
 
       {error && (
-        <p role="alert" className="mb-3 rounded-xl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+        <p role="alert" className="mb-3 text-sm text-danger">
           {error}
         </p>
       )}
 
       {linkedMissing && (
-        <p className="mb-3 rounded-xl bg-raised px-3 py-2 text-sm text-muted">
+        <p className="mb-3 text-sm text-muted">
           Linked: <span className="font-semibold text-fg">{linkedMissing}</span> (not visible right now)
         </p>
       )}
 
       {data?.devices.length === 0 && (
-        <p className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-sm text-muted">
+        <p className="py-6 text-center text-sm text-muted">
           No devices found.
         </p>
       )}
 
-      <ul className="flex flex-col gap-2">
+      <ul className="-mx-2 flex flex-col">
         {data?.devices.map((device) => {
           const linked = device.id === data.linkedDeviceId;
           return (
@@ -93,19 +93,17 @@ export function DeviceSection() {
                 type="button"
                 onClick={() => link(device)}
                 disabled={linked || linkingId !== null}
-                className={`flex min-h-14 w-full items-center justify-between gap-3 rounded-xl border px-4 text-left ${
-                  linked ? "border-volt bg-volt/10" : "border-line bg-raised active:bg-line"
-                }`}
+                className="flex min-h-14 w-full items-center justify-between gap-3 rounded-md px-2 text-left active:bg-raised"
               >
                 <span className="min-w-0">
-                  <span className="block truncate font-semibold">{device.name}</span>
-                  <span className="block text-xs text-muted">
+                  <span className={`block truncate text-base font-medium ${linked ? "text-accent" : ""}`}>{device.name}</span>
+                  <span className="block text-sm text-muted">
                     {device.type}
                     {device.isActive ? " · active" : ""}
                   </span>
                 </span>
-                <span className="shrink-0 text-sm font-semibold text-volt">
-                  {linkingId === device.id ? <Spinner /> : linked ? "Linked ✓" : "Link this"}
+                <span className={`shrink-0 text-sm font-bold ${linked ? "text-accent" : "text-muted"}`}>
+                  {linkingId === device.id ? <Spinner /> : linked ? "Linked" : "Link"}
                 </span>
               </button>
             </li>

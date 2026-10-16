@@ -41,6 +41,40 @@ export const trackItemSchema = z.object({
   }),
 });
 
+/** Minimal track shape for rest fillers (Liked Songs / playlist items). Episodes have type "episode". */
+export const fillerTrackSchema = z.object({
+  id: z.string().nullable(),
+  uri: z.string(),
+  type: z.string().optional(),
+  is_local: z.boolean().optional(),
+  duration_ms: z.number(),
+});
+
+export const savedTracksSchema = z.object({
+  items: z.array(z.object({ track: z.unknown() })),
+});
+
+/** `GET /playlists/{id}/items`. Since Feb 2026 the entry field is `item` (was `track`); accept both. */
+export const playlistItemsSchema = z.object({
+  items: z.array(z.object({ item: z.unknown().optional(), track: z.unknown().optional() })),
+});
+
+export const playlistsSchema = z.object({
+  items: z.array(
+    z
+      .object({
+        id: z.string(),
+        name: z.string(),
+        collaborative: z.boolean().optional(),
+        owner: z.object({ id: z.string() }),
+        images: z.array(z.object({ url: z.string() })).nullable().optional(),
+        items: z.object({ total: z.number() }).nullable().optional(),
+        tracks: z.object({ total: z.number() }).nullable().optional(),
+      })
+      .nullable(),
+  ),
+});
+
 export const currentlyPlayingSchema = z.object({
   progress_ms: z.number().nullable().optional(),
   is_playing: z.boolean(),

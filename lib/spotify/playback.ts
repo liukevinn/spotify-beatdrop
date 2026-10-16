@@ -1,6 +1,6 @@
 import { getSettings, updateSettings } from "@/lib/db/settings";
 import { AppError, SpotifyHttpError } from "@/lib/errors";
-import { getDevices, startPlayback, transferPlayback } from "@/lib/spotify/client";
+import { getDevices, playStraightThrough, startPlayback, transferPlayback } from "@/lib/spotify/client";
 import type { Device, Settings } from "@/lib/types";
 import { sleep } from "@/lib/utils";
 
@@ -33,22 +33,35 @@ function isNotFound(err: unknown): boolean {
  * Starts `track` at `positionMs` on the user's linked phone, recovering from a
  * stale/asleep device by re-finding it and transferring playback (spec §11.4).
  */
-export async function playOnDevice(
+export function playOnDevice(userId: string, track: { uri: string; name: string }, positionMs: number): Promise<void> {
+  return playQueueOnDevice(userId, { uris: [track.uri], name: track.name }, () => positionMs);
+}
+
+/**
+ * Plays `queue.uris` in order with the same device recovery as `playOnDevice`.
+ * `positionMs` is evaluated right before each play request, so callers can account
+ * for time spent on the way (spec §11.5). Multi-track queues turn off shuffle/repeat.
+ */
+export async function playQueueOnDevice(
   userId: string,
-  track: { uri: string; name: string },
-  positionMs: number,
+  queue: { uris: string[]; name: string },
+  positionMs: () => number,
 ): Promise<void> {
   const settings = await getSettings(userId);
   const deviceId = settings.deviceId ?? pickFallbackDevice(await getDevices(userId))?.id;
   if (!deviceId) throw new AppError("NO_DEVICE");
+  const straightThrough = queue.uris.length > 1;
 
   try {
-    await startPlayback(userId, deviceId, track.uri, positionMs);
+    if (straightThrough) await playStraightThrough(userId, deviceId);
+    await startPlayback(userId, deviceId, queue.uris, positionMs());
+    // Again after play, in case the device applied shuffle as the queue started.
+    if (straightThrough) await playStraightThrough(userId, deviceId);
     return;
   } catch (err) {
     if (!isNotFound(err)) {
       if (err instanceof SpotifyHttpError && err.httpStatus < 500) {
-        throw new AppError("TRACK_UNAVAILABLE", `Couldn't play ${track.name}. Try again.`);
+        throw new AppError("TRACK_UNAVAILABLE", `Couldn't play ${queue.name}. Try again.`);
       }
       throw err;
     }
@@ -63,7 +76,9 @@ export async function playOnDevice(
   try {
     await transferPlayback(userId, target.id);
     await sleep(TRANSFER_SETTLE_MS);
-    await startPlayback(userId, target.id, track.uri, positionMs);
+    if (straightThrough) await playStraightThrough(userId, target.id);
+    await startPlayback(userId, target.id, queue.uris, positionMs());
+    if (straightThrough) await playStraightThrough(userId, target.id);
   } catch (err) {
     if (err instanceof SpotifyHttpError) throw new AppError("NO_DEVICE");
     throw err;

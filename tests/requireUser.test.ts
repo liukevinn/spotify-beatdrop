@@ -18,7 +18,8 @@ const user = (id: string, needsReauth = false) => ({
   refresh_token_enc: "x",
   access_token: null,
   access_token_expires_at: null,
-  needs_reauth: needsReauth,
+  scopes: null,
+    needs_reauth: needsReauth,
 });
 
 function req(bearer?: string) {

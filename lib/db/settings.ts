@@ -1,5 +1,5 @@
 import { check, db, nowIso, unwrap, unwrapMaybe } from "@/lib/db/client";
-import type { QueueMode, Settings } from "@/lib/types";
+import type { QueueMode, RestSource, Settings } from "@/lib/types";
 
 interface SettingsRow {
   lead_ms: number;
@@ -8,9 +8,22 @@ interface SettingsRow {
   avoid_repeat_within: number;
   device_id: string | null;
   device_name: string | null;
+  rest_ms: number;
+  rest_source: string | null;
+  rest_source_name: string | null;
+  next_drop_id: string | null;
 }
 
-const COLUMNS = "lead_ms, reaction_offset_ms, queue_mode, avoid_repeat_within, device_id, device_name";
+const COLUMNS =
+  "lead_ms, reaction_offset_ms, queue_mode, avoid_repeat_within, device_id, device_name, rest_ms, rest_source, rest_source_name, next_drop_id";
+
+const LIKED = "liked";
+
+function toRestSource(row: Pick<SettingsRow, "rest_source" | "rest_source_name">): RestSource | null {
+  if (!row.rest_source) return null;
+  if (row.rest_source === LIKED) return { kind: "liked" };
+  return { kind: "playlist", id: row.rest_source, name: row.rest_source_name ?? "Playlist" };
+}
 
 function toSettings(row: SettingsRow): Settings {
   return {
@@ -20,6 +33,9 @@ function toSettings(row: SettingsRow): Settings {
     avoidRepeatWithin: row.avoid_repeat_within,
     deviceId: row.device_id,
     deviceName: row.device_name,
+    restMs: row.rest_ms,
+    restSource: toRestSource(row),
+    nextDropId: row.next_drop_id,
   };
 }
 
@@ -50,6 +66,13 @@ export async function updateSettings(userId: string, patch: SettingsPatch): Prom
   if (patch.avoidRepeatWithin !== undefined) row.avoid_repeat_within = patch.avoidRepeatWithin;
   if (patch.deviceId !== undefined) row.device_id = patch.deviceId;
   if (patch.deviceName !== undefined) row.device_name = patch.deviceName;
+  if (patch.restMs !== undefined) row.rest_ms = patch.restMs;
+  if (patch.nextDropId !== undefined) row.next_drop_id = patch.nextDropId;
+  if (patch.restSource !== undefined) {
+    const source = patch.restSource;
+    row.rest_source = source === null ? null : source.kind === "liked" ? LIKED : source.id;
+    row.rest_source_name = source?.kind === "playlist" ? source.name : null;
+  }
 
   const res = await db().from("settings").update(row).eq("user_id", userId).select(COLUMNS).single<SettingsRow>();
   return toSettings(unwrap(res, "updateSettings"));

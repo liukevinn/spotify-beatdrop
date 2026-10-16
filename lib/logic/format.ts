@@ -21,3 +21,9 @@ export function formatTimeAgo(iso: string, now: Date = new Date()): string {
   if (hours < 24) return `${hours} h ago`;
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
+
+/** 210000 → "3:30", 95400 → "1:35" (whole seconds, for rest times and countdowns). */
+export function formatClock(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}

@@ -18,7 +18,7 @@ export function TabBar() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-ink/90 backdrop-blur pb-safe">
+    <nav className="fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-black via-black/95 to-transparent pt-6 pb-safe">
       <ul className="mx-auto grid max-w-md grid-cols-4">
         {TABS.map((tab) => {
           const active = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
@@ -27,8 +27,8 @@ export function TabBar() {
               <Link
                 href={tab.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] font-medium tracking-wide ${
-                  active ? "text-volt" : "text-muted"
+                className={`flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] font-medium ${
+                  active ? "text-fg" : "text-muted"
                 }`}
               >
                 <svg
@@ -36,7 +36,7 @@ export function TabBar() {
                   className="h-6 w-6"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth={1.8}
+                  strokeWidth={active ? 2.4 : 1.8}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden

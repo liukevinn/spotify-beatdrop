@@ -34,6 +34,8 @@ export interface NewSet {
   positionMs: number;
   leadMs: number;
   source: SetSource;
+  /** Defaults to now. Rests pass the tap time so the countdown and history anchor to it. */
+  cuedAt?: string;
 }
 
 export async function insertSet(userId: string, set: NewSet): Promise<SetRecord> {
@@ -47,10 +49,35 @@ export async function insertSet(userId: string, set: NewSet): Promise<SetRecord>
       position_ms: set.positionMs,
       lead_ms: set.leadMs,
       source: set.source,
+      ...(set.cuedAt ? { cued_at: set.cuedAt } : {}),
     })
     .select(COLUMNS)
     .single<SetRow>();
   return toSet(unwrap(res, "insertSet"));
+}
+
+export interface SetSwap {
+  dropId: string;
+  trackId: string;
+  trackName: string;
+  positionMs: number;
+}
+
+/** Points a logged set at a different drop (Swap song during a rest). */
+export async function updateSetDrop(userId: string, setId: string, swap: SetSwap): Promise<SetRecord> {
+  const res = await db()
+    .from("sets")
+    .update({
+      drop_id: swap.dropId,
+      track_id: swap.trackId,
+      track_name: swap.trackName,
+      position_ms: swap.positionMs,
+    })
+    .eq("user_id", userId)
+    .eq("id", setId)
+    .select(COLUMNS)
+    .single<SetRow>();
+  return toSet(unwrap(res, "updateSetDrop"));
 }
 
 /** Newest first. `since` (ISO) optionally limits to sets cued after that time. */

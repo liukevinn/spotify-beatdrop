@@ -6,7 +6,7 @@ export function AlbumArt({ url, size, className = "" }: { url: string | null; si
     return (
       <div
         style={{ width: size, height: size }}
-        className={`shrink-0 rounded-lg bg-raised ring-1 ring-line ${className}`}
+        className={`shrink-0 rounded bg-raised ${className}`}
         aria-hidden
       />
     );
@@ -18,7 +18,7 @@ export function AlbumArt({ url, size, className = "" }: { url: string | null; si
       width={size}
       height={size}
       unoptimized
-      className={`shrink-0 rounded-lg object-cover ring-1 ring-line ${className}`}
+      className={`shrink-0 rounded object-cover ${className}`}
     />
   );
 }

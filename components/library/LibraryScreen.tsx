@@ -127,7 +127,7 @@ export function LibraryScreen() {
       {loadError && (
         <EmptyState>
           {loadError}{" "}
-          <button type="button" onClick={load} className="font-semibold text-volt underline underline-offset-4">
+          <button type="button" onClick={load} className="font-semibold text-accent underline underline-offset-4">
             Retry
           </button>
         </EmptyState>
@@ -142,7 +142,7 @@ export function LibraryScreen() {
       {drops?.length === 0 && <EmptyState>Play a song on Spotify and tap Mark drop when it hits.</EmptyState>}
 
       {drops && drops.length > 0 && (
-        <ul className="flex flex-col gap-2">
+        <ul className="-mx-2 flex flex-col gap-1">
           {drops.map((drop, index) => (
             <DropRow
               key={drop.id}

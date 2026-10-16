@@ -42,10 +42,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={toast.id}
             role={toast.tone === "error" ? "alert" : "status"}
-            className={`pointer-events-auto mt-2 w-full max-w-md rounded-2xl border px-4 py-3 text-[15px] font-medium shadow-2xl backdrop-blur ${
-              toast.tone === "error"
-                ? "border-danger/40 bg-danger/15 text-danger"
-                : "border-volt/30 bg-raised/95 text-fg"
+            className={`pointer-events-auto mt-2 w-full max-w-md rounded-lg px-4 py-3 text-[15px] font-semibold shadow-2xl ${
+              toast.tone === "error" ? "bg-danger text-ink" : "bg-fg text-ink"
             }`}
             onClick={() => setToast(null)}
           >

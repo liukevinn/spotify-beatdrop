@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { encrypt } from "@/lib/crypto";
-import { findRecoveryDevice, pickFallbackDevice, playOnDevice } from "@/lib/spotify/playback";
+import { findRecoveryDevice, pickFallbackDevice, playOnDevice, playQueueOnDevice } from "@/lib/spotify/playback";
 import type { Device, Settings } from "@/lib/types";
 import { emptyResponse, jsonResponse, mockFetch, spotifyError } from "./helpers";
 
@@ -27,6 +27,9 @@ const baseSettings: Settings = {
   avoidRepeatWithin: 5,
   deviceId: "phone-old",
   deviceName: "Kev's iPhone",
+  restMs: 210000,
+  restSource: null,
+  nextDropId: null,
 };
 const track = { uri: "spotify:track:t1", name: "Song" };
 const phone: Device = { id: "phone-new", name: "Kev's iPhone", type: "Smartphone", isActive: false };
@@ -126,5 +129,49 @@ describe("playOnDevice", () => {
       code: "TRACK_UNAVAILABLE",
       message: "Couldn't play Song. Try again.",
     });
+  });
+});
+
+describe("playQueueOnDevice", () => {
+  const queue = { uris: ["spotify:track:f1", "spotify:track:t1"], name: "Song" };
+
+  it("turns off shuffle and repeat around a multi-track play and pins the first track", async () => {
+    const calls = mockFetch(...Array.from({ length: 5 }, () => () => emptyResponse(204)));
+    let evaluated = 0;
+    await playQueueOnDevice("u1", queue, () => {
+      evaluated++;
+      return 12345;
+    });
+
+    const paths = calls.map((c) => `${c.method} ${new URL(c.url).pathname}`);
+    expect(paths.slice(0, 2).sort()).toEqual(["PUT /v1/me/player/repeat", "PUT /v1/me/player/shuffle"]);
+    expect(paths[2]).toBe("PUT /v1/me/player/play");
+    expect(paths.slice(3).sort()).toEqual(["PUT /v1/me/player/repeat", "PUT /v1/me/player/shuffle"]);
+    expect(calls.find((c) => c.url.includes("/shuffle"))!.url).toContain("state=false");
+    expect(calls.find((c) => c.url.includes("/repeat"))!.url).toContain("state=off");
+    expect(JSON.parse(calls[2]!.body!)).toEqual({ uris: queue.uris, position_ms: 12345, offset: { position: 0 } });
+    expect(evaluated).toBe(1);
+  });
+
+  it("still plays when the shuffle/repeat reset fails on a sleeping device, then recovers", async () => {
+    const calls = mockFetch(
+      () => spotifyError(404, "NO_ACTIVE_DEVICE"), // shuffle
+      () => spotifyError(404, "NO_ACTIVE_DEVICE"), // repeat
+      () => spotifyError(404, "NO_ACTIVE_DEVICE"), // play
+      () => devicesJson([phone]),
+      () => emptyResponse(204), // transfer
+      () => emptyResponse(204), // shuffle
+      () => emptyResponse(204), // repeat
+      () => emptyResponse(204), // play
+      () => emptyResponse(204), // shuffle
+      () => emptyResponse(204), // repeat
+    );
+    let evaluated = 0;
+    await playQueueOnDevice("u1", queue, () => ++evaluated * 1000);
+    const plays = calls.filter((c) => new URL(c.url).pathname === "/v1/me/player/play");
+    expect(plays).toHaveLength(2);
+    expect(plays[1]!.url).toContain("device_id=phone-new");
+    // Position is recomputed for the retry, so time spent recovering is accounted for.
+    expect(JSON.parse(plays[1]!.body!).position_ms).toBe(2000);
   });
 });

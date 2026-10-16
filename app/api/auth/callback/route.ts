@@ -39,6 +39,7 @@ export async function GET(req: Request) {
       refreshTokenEnc: encrypt(tokens.refresh_token),
       accessToken: tokens.access_token,
       accessTokenExpiresAt: expiresAtIso(tokens.expires_in),
+      scopes: tokens.scope ?? null,
     });
     await ensureSettings(user.id);
 

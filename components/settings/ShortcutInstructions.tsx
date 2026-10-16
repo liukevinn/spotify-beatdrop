@@ -4,10 +4,10 @@ export function ShortcutInstructions({ origin, token }: { origin: string; token?
   return (
     <div className="space-y-4 text-sm leading-relaxed text-muted">
       <div>
-        <p className="font-semibold text-fg">Shortcut “Cue Set”</p>
+        <p className="font-semibold text-fg">Shortcut “Start Rest”</p>
         <ol className="mt-2 list-decimal space-y-2 pl-5">
           <li>
-            <span className="text-fg">Get Contents of URL</span>: <code className={code}>{origin}/api/cue</code>, Method{" "}
+            <span className="text-fg">Get Contents of URL</span>: <code className={code}>{origin}/api/rest</code>, Method{" "}
             <code className={code}>POST</code>, Header <code className={code}>Authorization</code> ={" "}
             <code className={code}>Bearer {token ?? "<your token>"}</code>, Request Body JSON (empty).
           </li>
@@ -22,11 +22,12 @@ export function ShortcutInstructions({ origin, token }: { origin: string; token?
         </ol>
       </div>
       <p>
-        Bind it: Settings → Action Button → Shortcut → “Cue Set”. Or Settings → Accessibility → Touch → Back Tap →
-        Double Tap.
+        Bind it: Settings → Action Button → Shortcut → “Start Rest”. Or Settings → Accessibility → Touch → Back Tap →
+        Double Tap. Press it when you rack the weight: your Up next drop lands when the default rest ends.
       </p>
       <p>
-        Optional: a “Mark Drop” shortcut posting to <code className={code}>{origin}/api/drops/mark</code> (works with
+        Optional: “Cue Set” posting to <code className={code}>{origin}/api/cue</code> (song starts right before the
+        drop, no rest music), a “Mark Drop” shortcut posting to <code className={code}>{origin}/api/drops/mark</code> (works with
         Siri), and “Nudge Later” posting <code className={code}>{`{ "deltaMs": 1000 }`}</code> to{" "}
         <code className={code}>{origin}/api/cue/nudge-last</code>.
       </p>
