@@ -34,7 +34,7 @@ export interface NewSet {
   positionMs: number;
   leadMs: number;
   source: SetSource;
-  /** Defaults to now. Rests pass the tap time so the countdown and history anchor to it. */
+  /** Defaults to now. Rests pass the tap time so the countdown anchors to it. */
   cuedAt?: string;
 }
 

@@ -41,7 +41,11 @@ export function Spinner({ className = "" }: { className?: string }) {
 }
 
 export function EmptyState({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-lg bg-surface px-6 py-12 text-center text-[15px] leading-relaxed text-muted">{children}</div>;
+  return (
+    <div className="rounded-lg bg-surface px-6 py-12 text-center text-[15px] leading-relaxed text-muted">
+      {children}
+    </div>
+  );
 }
 
 export function Notice({
@@ -62,11 +66,18 @@ export function Notice({
         <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} aria-hidden />
         {children}
       </span>
-      {href && linkLabel && (
-        <Link href={href} className={`${pill.secondary} min-h-8 shrink-0 px-3 text-[13px]`}>
-          {linkLabel}
-        </Link>
-      )}
+      {href &&
+        linkLabel &&
+        (href.startsWith("/api/") ? (
+          // Plain <a>: API routes redirect server-side (e.g. to Spotify login).
+          <a href={href} className={`${pill.secondary} min-h-8 shrink-0 px-3 text-[13px]`}>
+            {linkLabel}
+          </a>
+        ) : (
+          <Link href={href} className={`${pill.secondary} min-h-8 shrink-0 px-3 text-[13px]`}>
+            {linkLabel}
+          </Link>
+        ))}
     </div>
   );
 }

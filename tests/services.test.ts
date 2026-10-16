@@ -34,7 +34,6 @@ const usersDb = await import("@/lib/db/users");
 
 const settings: Settings = {
   leadMs: 20000,
-  reactionOffsetMs: 250,
   queueMode: "sequential",
   avoidRepeatWithin: 5,
   deviceId: "phone",
@@ -124,23 +123,16 @@ describe("markDrop", () => {
     track: { id: "t1", uri: "spotify:track:t1", name: "Song", artists: "A", albumArtUrl: null, durationMs: 200000 },
   };
 
-  it("saves progress minus the reaction offset", async () => {
+  it("saves the current position as the drop", async () => {
     vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue(playing);
     vi.mocked(dropsDb.saveMarkedDrop).mockResolvedValue({
-      drop: drop({ trackName: "Song", dropMs: 83412 }),
+      drop: drop({ trackName: "Song", dropMs: 83662 }),
       created: true,
     });
 
     const result = await markDrop("u1");
-    expect(dropsDb.saveMarkedDrop).toHaveBeenCalledWith("u1", playing.track, 83412);
-    expect(result.message).toBe("Marked drop for Song at 1:23.4");
-  });
-
-  it("honours an explicit reaction offset", async () => {
-    vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue(playing);
-    vi.mocked(dropsDb.saveMarkedDrop).mockResolvedValue({ drop: drop(), created: false });
-    await markDrop("u1", { reactionOffsetMs: 0 });
     expect(dropsDb.saveMarkedDrop).toHaveBeenCalledWith("u1", playing.track, 83662);
+    expect(result.message).toBe("Marked drop for Song at 1:23.6");
   });
 
   it("rejects when nothing or a local file is playing", async () => {
@@ -240,6 +232,7 @@ describe("startRest", () => {
     vi.mocked(dropsDb.listDrops).mockResolvedValue([target]);
     vi.mocked(usersDb.getUserById).mockResolvedValue({ scopes: allScopes } as never);
     vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue({ kind: "nothing" });
+    vi.mocked(spotify.getLikedFillers).mockResolvedValue([]);
   });
 
   it("keeps what's playing and only schedules the cut at rest − drop", async () => {
@@ -344,6 +337,15 @@ describe("startRest", () => {
     vi.mocked(settingsDb.getSettings).mockResolvedValue({ ...settings, restSource: { kind: "liked" } });
     vi.mocked(usersDb.getUserById).mockResolvedValue({ scopes: "user-read-playback-state" } as never);
     await expect(startRest("u1", { restMs: 210_000, source: "pwa" })).resolves.toMatchObject({ ok: true });
+  });
+
+  it("falls back to tagged songs when Liked Songs can't be read", async () => {
+    vi.mocked(dropsDb.listDrops).mockResolvedValue([target, other]);
+    vi.mocked(usersDb.getUserById).mockResolvedValue({ scopes: "user-read-playback-state" } as never);
+    await startRest("u1", { dropId: target.id, restMs: 210_000, source: "pwa" });
+    expect(new Set(vi.mocked(playback.playQueueOnDevice).mock.calls[0]![1].uris)).toEqual(
+      new Set(["spotify:track:t3"]),
+    );
   });
 
   it("fails with NO_FILLER when nothing is playing and there's no backup music", async () => {
@@ -471,6 +473,7 @@ describe("swapRest", () => {
   beforeEach(() => {
     vi.mocked(dropsDb.getDropOrThrow).mockResolvedValue(swapIn);
     vi.mocked(dropsDb.listDrops).mockResolvedValue([original, swapIn]);
+    vi.mocked(usersDb.getUserById).mockResolvedValue({ scopes: null } as never);
     vi.mocked(setsDb.updateSetDrop).mockImplementation(async (_u, _id, swap) => ({ ...restEndingIn(0), ...swap }));
   });
 

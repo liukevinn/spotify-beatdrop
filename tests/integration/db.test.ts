@@ -82,14 +82,13 @@ describe.skipIf(!run)("lib/db against Supabase", () => {
     await settings.ensureSettings(userId); // idempotent
     expect(await settings.getSettings(userId)).toEqual({
       leadMs: 20000,
-      reactionOffsetMs: 250,
       queueMode: "shuffle",
       avoidRepeatWithin: 5,
       deviceId: null,
       deviceName: null,
     });
     const updated = await settings.updateSettings(userId, { leadMs: 30000, deviceId: "d1", deviceName: "iPhone" });
-    expect(updated).toMatchObject({ leadMs: 30000, reactionOffsetMs: 250, deviceId: "d1", deviceName: "iPhone" });
+    expect(updated).toMatchObject({ leadMs: 30000, deviceId: "d1", deviceName: "iPhone" });
   });
 
   it("rejects out-of-range settings at the DB level too", async () => {
@@ -103,7 +102,10 @@ describe.skipIf(!run)("lib/db against Supabase", () => {
     expect(second.drop.sortOrder).toBe(first.drop.sortOrder + 1);
 
     const remark = await drops.saveMarkedDrop(userId, { ...track(1), name: "Song 1 (renamed)" }, 61000);
-    expect(remark).toMatchObject({ created: false, drop: { id: first.drop.id, dropMs: 61000, trackName: "Song 1 (renamed)" } });
+    expect(remark).toMatchObject({
+      created: false,
+      drop: { id: first.drop.id, dropMs: 61000, trackName: "Song 1 (renamed)" },
+    });
     expect(await drops.listDrops(userId)).toHaveLength(2);
     expect((await drops.findDropByTrack(userId, track(1).id))?.id).toBe(first.drop.id);
   });
@@ -111,7 +113,9 @@ describe.skipIf(!run)("lib/db against Supabase", () => {
   it("scopes every drop query by user", async () => {
     const [mine] = await drops.listDrops(userId);
     expect(await drops.getDrop(otherUserId, mine!.id)).toBeNull();
-    await expect(drops.updateDrop(otherUserId, mine!.id, { enabled: false })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(drops.updateDrop(otherUserId, mine!.id, { enabled: false })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
     await expect(drops.deleteDrop(otherUserId, mine!.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(drops.reorderDrops(otherUserId, [mine!.id])).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(await drops.getDrop(userId, mine!.id)).not.toBeNull();

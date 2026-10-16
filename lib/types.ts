@@ -19,12 +19,11 @@ export interface Drop {
   updatedAt: string;
 }
 
-/** Where rest fillers come from. `null` in settings = the user's other tagged songs. */
+/** Where backup music comes from. `null` in settings = Liked Songs (the only choice the UI offers today). */
 export type RestSource = { kind: "liked" } | { kind: "playlist"; id: string; name: string };
 
 export interface Settings {
   leadMs: number;
-  reactionOffsetMs: number;
   queueMode: QueueMode;
   avoidRepeatWithin: number;
   deviceId: string | null;
@@ -33,14 +32,6 @@ export interface Settings {
   restSource: RestSource | null;
   /** "Up next": the drop the next rest/cue uses. Cleared once used. */
   nextDropId: string | null;
-}
-
-/** A playlist the user can pick as a rest source. */
-export interface PlaylistInfo {
-  id: string;
-  name: string;
-  trackCount: number | null;
-  imageUrl: string | null;
 }
 
 export interface SetRecord {

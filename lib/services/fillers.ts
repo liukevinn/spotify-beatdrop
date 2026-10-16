@@ -5,9 +5,14 @@ import { getLikedFillers, getPlaylistFillers } from "@/lib/spotify/client";
 import { hasRestScopes } from "@/lib/spotify/oauth";
 import type { Drop, RestSource } from "@/lib/types";
 
+function otherDropsOf(drop: Drop, enabledDrops: Drop[]): Filler[] {
+  return enabledDrops.filter((d) => d.id !== drop.id).map((d) => ({ uri: d.trackUri, durationMs: d.durationMs }));
+}
+
 /**
- * Backup music (spec §11.5), best first: the rest source minus every tagged song (so drops
- * aren't spoiled), else the user's other tagged songs. With no source set, the tagged songs.
+ * Backup music (spec §11.5), best first: the rest source (default Liked Songs) minus every
+ * tagged song (so drops aren't spoiled), else the user's other tagged songs. Without the
+ * library scopes, the tagged songs; with none of those either, PLAYLIST_ACCESS_REQUIRED.
  */
 export async function loadFillers(
   userId: string,
@@ -15,16 +20,16 @@ export async function loadFillers(
   drop: Drop,
   enabledDrops: Drop[],
 ): Promise<Filler[]> {
-  const otherDrops = enabledDrops
-    .filter((d) => d.id !== drop.id)
-    .map((d) => ({ uri: d.trackUri, durationMs: d.durationMs }));
-  if (!source) return otherDrops;
-
+  const otherDrops = otherDropsOf(drop, enabledDrops);
   const user = await getUserById(userId);
-  if (!hasRestScopes(user?.scopes ?? null)) throw new AppError("PLAYLIST_ACCESS_REQUIRED");
+  if (!hasRestScopes(user?.scopes ?? null)) {
+    if (otherDrops.length > 0) return otherDrops;
+    throw new AppError("PLAYLIST_ACCESS_REQUIRED");
+  }
 
+  const effective = source ?? { kind: "liked" };
   const fromSource =
-    source.kind === "liked" ? await getLikedFillers(userId) : await getPlaylistFillers(userId, source.id);
+    effective.kind === "liked" ? await getLikedFillers(userId) : await getPlaylistFillers(userId, effective.id);
   const tagged = new Set(enabledDrops.map((d) => d.trackId));
   tagged.add(drop.trackId);
   const untagged = fromSource.filter((f) => !tagged.has(f.trackId));
@@ -45,6 +50,6 @@ export async function loadFillersBestEffort(
     return await loadFillers(userId, source, drop, enabledDrops);
   } catch (err) {
     console.warn("[fillers] falling back to tagged songs:", err instanceof Error ? err.message : err);
-    return loadFillers(userId, null, drop, enabledDrops);
+    return otherDropsOf(drop, enabledDrops);
   }
 }

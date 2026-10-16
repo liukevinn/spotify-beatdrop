@@ -7,7 +7,7 @@ import { api, errorMessage } from "@/lib/client/api";
 import { formatClock } from "@/lib/logic/format";
 import type { QueueMode, Settings } from "@/lib/types";
 
-type Editable = Pick<Settings, "leadMs" | "reactionOffsetMs" | "queueMode" | "avoidRepeatWithin" | "restMs">;
+type Editable = Pick<Settings, "leadMs" | "queueMode" | "avoidRepeatWithin" | "restMs">;
 const SAVE_DELAY_MS = 500;
 const MAX_AVOID_REPEAT_UI = 20;
 
@@ -122,17 +122,6 @@ export function PlaybackSection() {
         step={1}
         hint="For the small “Start in…” button: how long before the drop the song starts."
         onChange={(sec) => update({ leadMs: sec * 1000 })}
-      />
-
-      <SliderRow
-        label="Reaction offset"
-        value={settings.reactionOffsetMs}
-        display={`${settings.reactionOffsetMs}ms`}
-        min={0}
-        max={600}
-        step={25}
-        hint="Subtracted when you tap Mark drop, to cancel out your reaction time."
-        onChange={(ms) => update({ reactionOffsetMs: ms })}
       />
 
       <div>

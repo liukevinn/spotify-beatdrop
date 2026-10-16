@@ -2,7 +2,7 @@
 
 A personal tool that starts a Spotify song a set number of seconds before its beat drop, so you can get set up during the build-up and start your set exactly on the drop.
 
-- **Tag drops** while listening: tap **Mark drop** when the drop hits. DropSet saves the timestamp (minus your reaction time).
+- **Tag drops** while listening: tap **Mark drop** when the drop hits. DropSet saves the timestamp.
 - **Cue a set** at the gym: one tap (or the iPhone Action button via an iOS Shortcut) starts the next tagged song at `drop − lead` (default 20 s) on your phone.
 - **Nudge** a drop ±¼ s / ±1 s after a set if it felt early or late.
 
@@ -17,7 +17,7 @@ See [`SPEC.md`](SPEC.md) for the full product and technical specification.
 Next.js 15 (App Router, TypeScript strict) · Tailwind CSS 4 · zod · Supabase Postgres (server-side, service role only) · iron-session · Vitest · Vercel.
 
 ```
-app/(app)/            signed-in screens: Home, Library, History, Settings (+ auth gate, tab bar)
+app/(app)/            signed-in screens: Home, Library, Settings (+ auth gate, tab bar)
 app/login/            login screen
 app/api/**/route.ts   JSON API (thin handlers → lib/services, lib/db, lib/spotify)
 components/           UI, grouped by screen
@@ -45,7 +45,7 @@ The app owner needs Spotify Premium, and so does every user, because playback co
 
 ### 2. Supabase
 
-Create a project, then run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) and [`0002_rest_segue.sql`](supabase/migrations/0002_rest_segue.sql), in order, in the SQL editor (or `supabase db push`). Copy the **Project URL** and the **service_role** key (Settings → API). Supabase is used only as a database: no Supabase Auth, no browser client, and RLS is on with no policies. Either the legacy `service_role` JWT or a new `sb_secret_…` key works.
+Create a project, then run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql), [`0002_rest_segue.sql`](supabase/migrations/0002_rest_segue.sql), and [`0003_drop_reaction_offset.sql`](supabase/migrations/0003_drop_reaction_offset.sql), in order, in the SQL editor (or `supabase db push`). Copy the **Project URL** and the **service_role** key (Settings → API). Supabase is used only as a database: no Supabase Auth, no browser client, and RLS is on with no policies. Either the legacy `service_role` JWT or a new `sb_secret_…` key works.
 
 **Optional, for local development:** with Docker running, `supabase start` spins up a local Postgres with the migration applied (`SUPABASE_URL=http://127.0.0.1:54321`).
 
@@ -96,8 +96,8 @@ Open <http://127.0.0.1:3000>. Local dev covers login, tagging, and cueing, becau
 ## First-time use
 
 1. **Settings → Device:** open Spotify on your phone, tap **Refresh**, then tap your phone to link it.
-2. **Settings → Playback:** set your default rest (up to 5:00, e.g. 3:30), the lead time for "Start in…", reaction offset, queue mode, and repeat avoidance.
-3. **Settings → Rest music:** pick Liked Songs or one of your own playlists to play during rests. If it asks, tap **Grant playlist access** and log in again.
+2. **Settings → Playback:** set your default rest (up to 5:00, e.g. 3:30), the lead time for "Start in…", queue mode, and repeat avoidance.
+3. Rests keep whatever you're playing. If nothing is playing, DropSet plays your **Liked Songs** (if Home asks, tap **Log in** once to grant access).
 4. **Settings → Shortcut tokens:** create a token. It's shown **once**, so copy it into the Shortcut below.
 
 ## iOS Shortcut
@@ -112,7 +112,7 @@ Open <http://127.0.0.1:3000>. Local dev covers login, tagging, and cueing, becau
 2. **If** the result's `ok` has any value → **Get Dictionary Value** `message`. Otherwise → get `error` → `message`.
 3. **Show Notification** with that value (e.g. `⏱ 3:30 rest → Song Name`).
 
-It plays rest music from the start of a song, then switches to your **Up next** song (or the next one from the queue) so its drop lands exactly when the default rest ends. To override the rest, set the Request Body to JSON `{ "restMs": 180000 }`.
+It keeps whatever you're playing (or starts your Liked Songs if nothing is), then switches to your **Up next** song (or the next one from the queue) so its drop lands exactly when the default rest ends. To override the rest, set the Request Body to JSON `{ "restMs": 180000 }`.
 
 Bind it under **Settings → Action Button → Shortcut → "Start Rest"** (iPhone 15 Pro and later). On other iPhones, use **Settings → Accessibility → Touch → Back Tap → Double Tap → "Start Rest"**.
 
@@ -141,14 +141,14 @@ Before relying on it at the gym, run through the manual checklist (every flow in
 ## Known limitations
 
 1. **Spotify Connect reachability.** If Spotify has been paused in the background for a few minutes, iOS may suspend it and the phone drops off the device list, so remote play fails with "Open Spotify on your phone and try again." The reliable path is cueing right as you pick up the phone. DropSet also retries by re-finding the phone and transferring playback. See [`docs/spike-results.md`](docs/spike-results.md) to record real-world behaviour.
-2. **Tagging precision.** Now-playing progress plus human reaction time is accurate to about ±300 ms. The reaction offset setting and the nudge buttons correct for it, and the lead time absorbs the rest.
+2. **Tagging precision.** Now-playing progress plus human reaction time is accurate to about ±300 ms. The early/late nudge buttons correct for it, and the lead time absorbs the rest.
 3. **Development Mode limits.** Max 5 users, and the app owner needs Premium.
 4. **Spotify API changes.** DropSet only uses `GET /me`, `GET /me/player/currently-playing`, `GET /me/player/devices`, `PUT /me/player`, and `PUT /me/player/play`.
 
 ## Notes and deviations from the spec
 
 - **Spotify API (checked September 2026).** The February 2026 Development Mode changes removed `linked_from` (and others) from track objects. DropSet never used it: it always takes `item.id`/`item.uri` as returned. All five endpoints above are still available.
-- **Route group.** The signed-in pages live in `app/(app)/` so they share one auth-gated layout and tab bar. URLs are unchanged (`/`, `/library`, `/history`, `/settings`).
+- **Route group.** The signed-in pages live in `app/(app)/` so they share one auth-gated layout and tab bar. URLs are unchanged (`/`, `/library`, `/settings`).
 - **M2 debug route.** `POST /api/debug/play` is omitted because the spec says to remove it after M4. Run the reliability spike with the Library's **Test** button or **Cue set**, which both use the same `playOnDevice` path.
 - **Local files.** `/api/player/now` reports `playing: false` for local files (they have no Spotify track id). Marking one returns `UNSUPPORTED_TRACK`.
 - **Extra error codes** beyond the spec table: `VALIDATION` (400), `NOT_FOUND` (404), `NO_SETS` (409, nudge-last before any cue), `SPOTIFY_ERROR` (502, upstream failure after retries), and `INTERNAL` (500).

@@ -8,13 +8,12 @@ import {
   devicesSchema,
   fillerTrackSchema,
   playlistItemsSchema,
-  playlistsSchema,
   profileSchema,
   savedTracksSchema,
   trackItemSchema,
 } from "@/lib/spotify/types";
 import type { Filler } from "@/lib/logic/segue";
-import type { Device, PlaylistInfo, TrackInfo } from "@/lib/types";
+import type { Device, TrackInfo } from "@/lib/types";
 import { sleep } from "@/lib/utils";
 
 const API_BASE = "https://api.spotify.com/v1";
@@ -268,7 +267,9 @@ function toFiller(raw: unknown): (Filler & { trackId: string }) | null {
 export async function getLikedFillers(userId: string): Promise<(Filler & { trackId: string })[]> {
   const pages = await Promise.all(
     PAGE_OFFSETS.map(async (offset) => {
-      const res = await spotifyFetch(userId, "/me/tracks", { query: { limit: String(PAGE_SIZE), offset: String(offset) } });
+      const res = await spotifyFetch(userId, "/me/tracks", {
+        query: { limit: String(PAGE_SIZE), offset: String(offset) },
+      });
       const parsed = savedTracksSchema.safeParse(await res.json());
       if (!parsed.success) throw new AppError("SPOTIFY_ERROR");
       return parsed.data.items.map((i) => toFiller(i.track));
@@ -278,7 +279,10 @@ export async function getLikedFillers(userId: string): Promise<(Filler & { track
 }
 
 /** The first tracks of a playlist the user owns or collaborates on (others return no items). */
-export async function getPlaylistFillers(userId: string, playlistId: string): Promise<(Filler & { trackId: string })[]> {
+export async function getPlaylistFillers(
+  userId: string,
+  playlistId: string,
+): Promise<(Filler & { trackId: string })[]> {
   const pages = await Promise.all(
     PAGE_OFFSETS.map(async (offset) => {
       const res = await spotifyFetch(userId, `/playlists/${encodeURIComponent(playlistId)}/items`, {
@@ -290,23 +294,4 @@ export async function getPlaylistFillers(userId: string, playlistId: string): Pr
     }),
   );
   return pages.flat().filter((f) => f !== null);
-}
-
-/** Playlists the user owns or collaborates on: the only ones whose tracks a dev-mode app can read. */
-export async function getMyPlaylists(userId: string, spotifyUserId: string): Promise<PlaylistInfo[]> {
-  const res = await spotifyFetch(userId, "/me/playlists", { query: { limit: "50" } });
-  const parsed = playlistsSchema.safeParse(await res.json());
-  if (!parsed.success) throw new AppError("SPOTIFY_ERROR");
-  return parsed.data.items.flatMap((p) =>
-    p && (p.owner.id === spotifyUserId || p.collaborative)
-      ? [
-          {
-            id: p.id,
-            name: p.name,
-            trackCount: p.items?.total ?? p.tracks?.total ?? null,
-            imageUrl: p.images?.[0]?.url ?? null,
-          },
-        ]
-      : [],
-  );
 }

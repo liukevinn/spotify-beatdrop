@@ -6,7 +6,6 @@ import { PageHeader, pill } from "@/components/ui";
 import { api, errorMessage } from "@/lib/client/api";
 import { DeviceSection } from "./DeviceSection";
 import { PlaybackSection } from "./PlaybackSection";
-import { RestSourceSection } from "./RestSourceSection";
 import { TokensSection } from "./TokensSection";
 
 export function SettingsScreen() {
@@ -29,14 +28,8 @@ export function SettingsScreen() {
       <PageHeader title="Settings" />
       <DeviceSection />
       <PlaybackSection />
-      <RestSourceSection />
       <TokensSection />
-      <button
-        type="button"
-        onClick={logout}
-        disabled={loggingOut}
-        className={`${pill.secondary} mt-2 min-h-12`}
-      >
+      <button type="button" onClick={logout} disabled={loggingOut} className={`${pill.secondary} mt-2 min-h-12`}>
         Log out
       </button>
     </div>

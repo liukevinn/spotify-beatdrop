@@ -174,7 +174,7 @@ The easiest route is importing from GitHub in the browser, which needs no CLI lo
      - **Show Notification** → that value
 
      **End If**
-- [ ] Run it once from the Shortcuts app. You should get a notification like `⏱ 3:30 rest → Song Name`, rest music should start, and the drop should land when the rest ends.
+- [ ] Run it once from the Shortcuts app. You should get a notification like `⏱ 3:30 rest → Song Name`, your music should keep playing, and the drop should land when the rest ends.
 - [ ] Bind it:
   - iPhone 15 Pro or later: **Settings → Action Button → Shortcut → Start Rest**.
   - Older iPhones: **Settings → Accessibility → Touch → Back Tap → Double Tap → Start Rest**.
@@ -203,8 +203,7 @@ This answers the open question in `docs/spike-results.md`: does cueing still wor
 - [ ] Press the Action button. The tagged song should start about 20 s before its drop.
 - [ ] Rest, set up, and start your set on the drop.
 - [ ] Between sets, press the Action button again. You should get a different song, and recent ones shouldn't repeat (the default avoids the last 5).
-- [ ] If a drop felt early or late, nudge it from **History**, or with the Nudge Later Shortcut.
-- [ ] Afterwards, check that **History** lists every set with source `shortcut`.
+- [ ] If a drop felt early or late, nudge it from the **Last set** card on Home ("The drop came… early/late"), or with the Nudge Later Shortcut.
 - [ ] If you're adding friends (up to 4 more): add their emails in Spotify **User Management** first. Then they open `<APP>`, log in, and repeat Phases 6–7 on their own phone with their own token.
 
 ---

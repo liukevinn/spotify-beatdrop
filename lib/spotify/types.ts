@@ -59,22 +59,6 @@ export const playlistItemsSchema = z.object({
   items: z.array(z.object({ item: z.unknown().optional(), track: z.unknown().optional() })),
 });
 
-export const playlistsSchema = z.object({
-  items: z.array(
-    z
-      .object({
-        id: z.string(),
-        name: z.string(),
-        collaborative: z.boolean().optional(),
-        owner: z.object({ id: z.string() }),
-        images: z.array(z.object({ url: z.string() })).nullable().optional(),
-        items: z.object({ total: z.number() }).nullable().optional(),
-        tracks: z.object({ total: z.number() }).nullable().optional(),
-      })
-      .nullable(),
-  ),
-});
-
 export const currentlyPlayingSchema = z.object({
   progress_ms: z.number().nullable().optional(),
   is_playing: z.boolean(),

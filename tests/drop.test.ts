@@ -1,15 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { computeMarkedDropMs, nudgeDropMs, testStartMs } from "@/lib/logic/drop";
+import { nudgeDropMs, testStartMs } from "@/lib/logic/drop";
 import { formatLeadSeconds, formatMs } from "@/lib/logic/format";
-
-describe("mark-drop math", () => {
-  it("subtracts the reaction offset", () => {
-    expect(computeMarkedDropMs(83662, 250)).toBe(83412);
-  });
-  it("clamps at 0", () => {
-    expect(computeMarkedDropMs(100, 250)).toBe(0);
-  });
-});
 
 describe("nudgeDropMs", () => {
   it("applies the delta", () => {
@@ -39,20 +30,5 @@ describe("format", () => {
   it("formats the lead in whole seconds", () => {
     expect(formatLeadSeconds(20000)).toBe("20s");
     expect(formatLeadSeconds(12000)).toBe("12s");
-  });
-});
-
-describe("groupByDay", async () => {
-  const { groupByDay } = await import("@/lib/logic/history");
-  const now = new Date(2026, 8, 24, 18, 0);
-  const at = (d: number, h: number) => ({ cuedAt: new Date(2026, 8, d, h).toISOString() });
-
-  it("groups newest-first sets by local day with friendly labels", () => {
-    const groups = groupByDay([at(24, 17), at(24, 9), at(23, 20), at(20, 8)], now);
-    expect(groups.map((g) => [g.label, g.items.length])).toEqual([
-      ["Today", 2],
-      ["Yesterday", 1],
-      [expect.stringContaining("20"), 1],
-    ]);
   });
 });

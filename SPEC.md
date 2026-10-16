@@ -69,7 +69,7 @@ Key properties:
 
 1. The user listens to music anywhere (walking, studying).
 2. When a drop hits, the user taps **Mark drop** in the PWA, or runs the "Mark drop" Shortcut.
-3. The app reads the currently playing track and position, subtracts a reaction offset (default 250 ms), and saves the drop.
+3. The app reads the currently playing track and position and saves that position as the drop. (v1.2: no reaction offset; the "early/late" nudges correct any tap lag.)
 4. Re-marking the same track overwrites the previous timestamp.
 5. Optionally, the user taps **Test** on a tagged song. It plays from 3 s before the saved drop so they can verify it and nudge by ±0.25 s or ±1 s.
 
@@ -97,19 +97,19 @@ Key properties:
 |---|---|---|
 | F1 | Spotify login | OAuth Authorization Code flow; session cookie; logout |
 | F2 | Now playing card | Shows current track, art, progress, and whether it's tagged; polls every 2 s while visible |
-| F3 | Mark drop | Saves `progress_ms - reaction_offset_ms` for the current track; available from the PWA and via bearer token (Shortcut) |
+| F3 | Mark drop | Saves `progress_ms` for the current track; available from the PWA and via bearer token (Shortcut) |
 | F4 | Library | List of tagged songs: name, artist, art, drop time (m:ss.s), enabled toggle, per-track lead override, reorder, delete |
 | F5 | Test drop | Plays the track from `drop_ms - 3000` on the linked device |
 | F6 | Nudge | ±250 ms / ±1000 ms adjustments to a track's `drop_ms`; on library rows and on the Last cued card |
 | F7 | Cue next set | Picks the next track and plays it at `drop_ms - lead`; available from a big button in the PWA and via bearer token (Shortcut) |
 | F8 | Device linking | Lists Spotify devices; user selects their phone; stored `device_id` with fallback logic |
-| F9 | Settings | Lead time (5–60 s, default 20), reaction offset (0–600 ms, default 250), queue mode (shuffle/sequential), repeat-avoidance window (default 5 sets) |
+| F9 | Settings | Lead time (5–60 s, default 20), queue mode (shuffle/sequential), repeat-avoidance window (default 5 sets) |
 | F10 | Shortcut tokens | Create (shown once), list, revoke; hashed at rest |
-| F11 | Set history | Log of every cue (time, track, position, lead); simple list page |
+| F11 | Set log | Every cue/rest is logged in `sets` (drives repeat avoidance, Last set, and nudge-last). v1.2: the History page was removed |
 | F12 | PWA | Manifest, icons, standalone display, iOS meta tags, mobile-first UI |
 | F13 | Start rest (v1.1) | Plays rest music now so the chosen drop hits exactly `rest` from the tap (Section 11.5); PWA and bearer token (Shortcut) |
 | F14 | Up next (v1.1) | Pick the drop for the next set on Home; stored server-side so the Shortcut uses it; one-shot (cleared once used) |
-| F15 | Rest settings (v1.1) | Default rest (0:30–5:00, default 3:30), per-set rest chips on Home, rest music source (Liked Songs, an owned/collaborative playlist, or the other tagged songs) |
+| F15 | Rest settings (v1.1) | Default rest (0:30–5:00, default 3:30), per-set rest chips on Home, backup music from Liked Songs (v1.2: no picker; `rest_source` stays in the data model, `NULL` = Liked Songs) |
 
 ## 5. Non-goals for v1
 
@@ -163,7 +163,6 @@ Do **not** build any of the following in v1:
 │  ├─ page.tsx                   # Home: now playing, Mark drop, Cue, Last cued
 │  ├─ login/page.tsx
 │  ├─ library/page.tsx
-│  ├─ history/page.tsx
 │  ├─ settings/page.tsx
 │  ├─ manifest.ts                # Next.js metadata route for the web manifest
 │  └─ api/
@@ -295,7 +294,6 @@ create table users (
 create table settings (
   user_id              uuid primary key references users(id) on delete cascade,
   lead_ms              integer not null default 20000 check (lead_ms between 5000 and 60000),
-  reaction_offset_ms   integer not null default 250   check (reaction_offset_ms between 0 and 600),
   queue_mode           text    not null default 'shuffle' check (queue_mode in ('shuffle','sequential')),
   avoid_repeat_within  integer not null default 5 check (avoid_repeat_within between 0 and 50),
   device_id            text,
@@ -358,6 +356,8 @@ Rules:
 - Every DB query must be scoped by `user_id`. Never trust an id from the client without checking ownership.
 - Update `updated_at` in application code on every update.
 - When a new user is created, insert a default `settings` row in the same request.
+
+**Migration `supabase/migrations/0003_drop_reaction_offset.sql` (v1.2)** drops `settings.reaction_offset_ms`.
 
 **Migration `supabase/migrations/0002_rest_segue.sql` (v1.1, additive):**
 
@@ -422,9 +422,9 @@ If `users.needs_reauth` is true → 401 `REAUTH_REQUIRED`, message `"Log in to D
 **Drops**
 
 - `GET /api/drops` → `{ drops: Drop[] }` ordered by `sort_order`.
-- `POST /api/drops/mark` body `{}` (optional `{ reactionOffsetMs }`) →
+- `POST /api/drops/mark` body `{}` →
   - reads currently-playing; if nothing is playing or it's not a track → 409 `NOTHING_PLAYING`, message `"Nothing is playing on Spotify."`
-  - `drop_ms = max(0, progress_ms - reaction_offset_ms)`
+  - `drop_ms = progress_ms`
   - upserts on `(user_id, track_id)`, refreshing metadata
   - response: `{ drop, created: boolean, message: "Marked drop for <name> at 1:23.4" }`
 - `PATCH /api/drops/:id` body any of `{ dropMs, enabled, leadMsOverride (number|null) }` → `{ drop }`.
@@ -453,13 +453,12 @@ If `users.needs_reauth` is true → 401 `REAUTH_REQUIRED`, message `"Log in to D
   4. Respond: `{ "ok": true, "set", "track": { "name", "artists" }, "restMs": 210000, "dropAt": "<ISO>", "message": "⏱ 3:30 rest → Song Name" }`.
   5. After responding (`after()`, `maxDuration = 300`): `performCut()` (Section 11.5).
 - `POST /api/rest/swap` (v1.1, session only) body `{ dropId }` → changes the running rest's drop song, keeping the same drop moment (`cuedAt + leadMs`). No rest with ≥ 1 s left → 409 `NO_ACTIVE_REST`. Updates the set's drop/track; reschedules the cut via `after()` (Section 11.5). Response `{ ok, set, track, dropAt, message: "⇄ Song — drop in m:ss" }`.
-- `GET /api/playlists` (v1.1) → `{ playlists: [{ id, name, trackCount, imageUrl }] }`, owned/collaborative only; 403 `PLAYLIST_ACCESS_REQUIRED` without the scopes.
 - `POST /api/cue/nudge-last` body `{ deltaMs }` → applies a nudge to the drop of the user's most recent `sets` row → `{ drop, message: "Adjusted <name> to 1:23.9" }`.
 
 **Settings / tokens / history**
 
 - `GET /api/settings` → settings object.
-- `PATCH /api/settings` body any of `{ leadMs, reactionOffsetMs, queueMode, avoidRepeatWithin, restMs, restSource, nextDropId }` → validated with the same ranges as the DB checks. `restSource` is `null`, `{ kind: "liked" }`, or `{ kind: "playlist", id, name }`. `nextDropId` must belong to the user (else 404).
+- `PATCH /api/settings` body any of `{ leadMs, queueMode, avoidRepeatWithin, restMs, restSource, nextDropId }` → validated with the same ranges as the DB checks. `restSource` is `null`, `{ kind: "liked" }`, or `{ kind: "playlist", id, name }`. `nextDropId` must belong to the user (else 404).
 - `GET /api/tokens` → `{ tokens: [{ id, label, createdAt, lastUsedAt, revoked }] }` (never returns the raw token or hash).
 - `POST /api/tokens` body `{ label }` → generates 32 random bytes as base64url, stores the sha256 hash → `{ id, token }` (**raw token returned only this once**).
 - `DELETE /api/tokens/:id` → sets `revoked_at`.
@@ -476,7 +475,7 @@ Mobile-first, one-handed use, dark theme, large touch targets (min 48 px). No ex
   - `appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "DropSet" }`
   - `apple-touch-icon` 180×180.
   - Viewport: `width=device-width, initial-scale=1, viewport-fit=cover`; respect `env(safe-area-inset-*)`.
-- Bottom tab bar: **Home**, **Library**, **History**, **Settings**.
+- Bottom tab bar: **Home**, **Library**, **Settings**. (v1.2: History removed.)
 - Unauthenticated users → redirect to `/login`. If `needsReauth` → a banner with a re-login button.
 - A service worker is **not required** in v1.
 
@@ -492,7 +491,7 @@ Top to bottom:
 6. **Start in Ns** button (the v1 cue, now secondary). Calls `POST /api/cue`.
 7. **Countdown** (v1.1). While a set's drop is still ahead (`cuedAt + leadMs`), the Now playing card is replaced by a live "Drop in m:ss" countdown, then "Drop!" for a few seconds. Changing the rest's song is done from the Up next card.
 8. **Last set card.** Most recent set: track name, time ago, rest/lead, and "The drop came…" buttons `1s early  ¼s early  ¼s late  1s late` (calls `POST /api/cue/nudge-last`).
-9. If no device is linked, a warning links to Settings. If a rest source is set but `playlistAccess` is false, a warning links to Settings.
+9. If no device is linked, a warning links to Settings. If `playlistAccess` is false, a warning offers "Log in" (`/api/auth/login`) to grant Liked Songs access.
 
 ### 10.3 Library (`/library`)
 
@@ -502,19 +501,13 @@ Top to bottom:
 - Reorder with up/down buttons (drag-and-drop optional). Persist via `/api/drops/reorder`.
 - Empty state: "Play a song on Spotify and tap Mark drop when it hits."
 
-### 10.4 History (`/history`)
-
-- Recent sets grouped by day: time, track, lead used.
-
 ### 10.5 Settings (`/settings`)
 
 - **Device:** a list from `GET /api/devices` with a refresh button; tap to link. Show the linked device name. Helper text: "Open Spotify on your phone first so it appears here."
 - **Default rest** (v1.1): slider 0:30–5:00, step 15 s.
 - **Lead time:** slider 5–60 s, step 1 s (used by "Start in Ns").
-- **Reaction offset:** slider 0–600 ms, step 25.
 - **Queue mode:** Shuffle / Sequential.
 - **Avoid repeats within:** stepper 0–20 sets.
-- **Backup music** (v1.1): played only when nothing is playing at Start rest, and queued behind drop songs. Liked Songs, the user's own/collaborative playlists (`GET /api/playlists`), or "My other drop songs". Collapsed to the current choice with a Change button. Without the scopes, show "Grant playlist access" → `/api/auth/login`.
 - **Shortcut tokens:** create (label input) → modal showing the token once with a copy button and the Shortcut instructions (Section 14); list with revoke.
 - **Log out.**
 
@@ -568,8 +561,7 @@ Make the random source injectable so it can be tested.
 ```
 now = GET /me/player/currently-playing
 if 204 or currently_playing_type != 'track' or item null → NOTHING_PLAYING
-offset = body.reactionOffsetMs ?? settings.reaction_offset_ms
-dropMs = max(0, now.progress_ms - offset)
+dropMs = now.progress_ms
 upsert drops (user_id, track_id=item.id) set track_uri=item.uri, track_name, artists, album_art_url,
        duration_ms, drop_ms=dropMs, updated_at=now()
 ```
@@ -614,11 +606,11 @@ playing = currently-playing is a playing track or a local file (errors → false
 cut = rest - drop_ms
 if cut > 285 s → REST_TOO_LONG                                       // must fit one 300 s function run
 
-fillers ("backup music") = rest-source tracks (100 most recent likes, or the first 100 playlist items)
+fillers ("backup music") = rest-source tracks (100 most recent likes by default, or the first 100 playlist items)
           minus local files, episodes, tracks < 30 s, the drop itself,
           and every tagged drop (so drops aren't spoiled)
           if that leaves nothing → the other enabled drops
-          (no rest source set → the other enabled drops)
+          no library scopes → the other enabled drops (PLAYLIST_ACCESS_REQUIRED only if there are none)
           loading is required (errors surface, e.g. PLAYLIST_ACCESS_REQUIRED) only when
           !playing and cut > 0; otherwise best effort, falling back to the other drops
 after = random fillers until sum(duration − 12 s) ≥ 12 min           // queued behind every drop song
@@ -766,7 +758,6 @@ Unit tests (Vitest), required:
 
 - `computeStartPosition`: normal case; drop earlier than the lead (clamps to 0, reports the real lead); override precedence; clamp near track end.
 - `selectNextDrop`: forced id; exclusion window; relaxation when everything is excluded; single-drop case; sequential wrap-around; shuffle with a seeded random.
-- Mark-drop math: reaction offset subtraction; clamp at 0.
 - Nudge clamping `[0, duration_ms - 1]`.
 - `crypto`: encrypt/decrypt round-trip; tamper detection (GCM auth failure throws); `hashToken` deterministic.
 - Spotify client (mock `fetch`): 401 → refresh → retry; refresh token rotation persisted; `invalid_grant` → `needs_reauth`; 204 currently-playing → `playing:false`; 404 on play → devices → transfer → retry; 429 handling.
@@ -803,7 +794,7 @@ Manual test checklist: every flow in Section 3 on a real iPhone with the Spotify
 ## 19. Open risks
 
 1. **Spotify Connect reachability.** If the Spotify app has been paused in the background for several minutes, iOS may suspend it and the phone may disappear from the device list, so remote `play` fails. Mitigation: the v1 happy path is cueing right as the user picks up the phone, plus the device fallback in Section 11.4 and the M2 spike to measure real behavior.
-2. **Tagging precision.** `progress_ms` plus human reaction time is approximate (±~300 ms). Mitigation: reaction offset setting and nudge buttons; the lead time absorbs small errors.
+2. **Tagging precision.** `progress_ms` plus human reaction time is approximate (±~300 ms). Mitigation: the early/late nudge buttons; the lead time absorbs small errors.
 3. **Development Mode limits.** 5 users max, and the app owner needs Premium. Acceptable for personal use.
 4. **Rest cut (v1.1).** Relies on the serverless function staying alive for the rest (`after()`, ≤ 300 s on Hobby). If the cut fails, rest music keeps playing and the user can tap Start in Ns. Logged as `[rest] cut for set …: played|superseded|paused|failed`.
 5. **Spotify API changes.** Spotify has restricted endpoints for Development Mode apps before. Keep API surface minimal (Section 7.3) and follow rule 12.

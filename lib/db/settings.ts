@@ -3,7 +3,6 @@ import type { QueueMode, RestSource, Settings } from "@/lib/types";
 
 interface SettingsRow {
   lead_ms: number;
-  reaction_offset_ms: number;
   queue_mode: QueueMode;
   avoid_repeat_within: number;
   device_id: string | null;
@@ -15,7 +14,7 @@ interface SettingsRow {
 }
 
 const COLUMNS =
-  "lead_ms, reaction_offset_ms, queue_mode, avoid_repeat_within, device_id, device_name, rest_ms, rest_source, rest_source_name, next_drop_id";
+  "lead_ms, queue_mode, avoid_repeat_within, device_id, device_name, rest_ms, rest_source, rest_source_name, next_drop_id";
 
 const LIKED = "liked";
 
@@ -28,7 +27,6 @@ function toRestSource(row: Pick<SettingsRow, "rest_source" | "rest_source_name">
 function toSettings(row: SettingsRow): Settings {
   return {
     leadMs: row.lead_ms,
-    reactionOffsetMs: row.reaction_offset_ms,
     queueMode: row.queue_mode,
     avoidRepeatWithin: row.avoid_repeat_within,
     deviceId: row.device_id,
@@ -61,7 +59,6 @@ export type SettingsPatch = Partial<Settings>;
 export async function updateSettings(userId: string, patch: SettingsPatch): Promise<Settings> {
   const row: Partial<SettingsRow> & { updated_at: string } = { updated_at: nowIso() };
   if (patch.leadMs !== undefined) row.lead_ms = patch.leadMs;
-  if (patch.reactionOffsetMs !== undefined) row.reaction_offset_ms = patch.reactionOffsetMs;
   if (patch.queueMode !== undefined) row.queue_mode = patch.queueMode;
   if (patch.avoidRepeatWithin !== undefined) row.avoid_repeat_within = patch.avoidRepeatWithin;
   if (patch.deviceId !== undefined) row.device_id = patch.deviceId;

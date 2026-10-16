@@ -22,7 +22,6 @@ const settingsDb = await import("@/lib/db/settings");
 
 const baseSettings: Settings = {
   leadMs: 20000,
-  reactionOffsetMs: 250,
   queueMode: "shuffle",
   avoidRepeatWithin: 5,
   deviceId: "phone-old",

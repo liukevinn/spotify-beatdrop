@@ -6,7 +6,6 @@ import {
   getCurrentlyPlaying,
   getDevices,
   getLikedFillers,
-  getMyPlaylists,
   getPlaylistFillers,
   getValidAccessToken,
   spotifyFetch,
@@ -198,7 +197,9 @@ describe("typed calls", () => {
   });
 
   it("treats a podcast episode as nothing playing", async () => {
-    mockFetch(() => jsonResponse({ is_playing: true, progress_ms: 1000, currently_playing_type: "episode", item: null }));
+    mockFetch(() =>
+      jsonResponse({ is_playing: true, progress_ms: 1000, currently_playing_type: "episode", item: null }),
+    );
     await expect(getCurrentlyPlaying(USER_ID)).resolves.toEqual({ kind: "nothing" });
   });
 
@@ -208,7 +209,15 @@ describe("typed calls", () => {
         is_playing: true,
         progress_ms: 1000,
         currently_playing_type: "track",
-        item: { id: null, uri: "spotify:local:x", name: "Demo", is_local: true, duration_ms: 1, artists: [], album: {} },
+        item: {
+          id: null,
+          uri: "spotify:local:x",
+          name: "Demo",
+          is_local: true,
+          duration_ms: 1,
+          artists: [],
+          album: {},
+        },
       }),
     );
     await expect(getCurrentlyPlaying(USER_ID)).resolves.toEqual({ kind: "local", name: "Demo" });
@@ -283,7 +292,10 @@ describe("rest filler sources", () => {
 
   it("reads playlist items from /items, accepting the new `item` and old `track` fields, and skips episodes", async () => {
     const calls = mockFetch(
-      () => jsonResponse({ items: [{ item: track("a") }, { item: track("ep", { type: "episode" }) }, { track: track("b") }] }),
+      () =>
+        jsonResponse({
+          items: [{ item: track("a") }, { item: track("ep", { type: "episode" }) }, { track: track("b") }],
+        }),
       () => jsonResponse({ items: [] }),
     );
     const fillers = await getPlaylistFillers(USER_ID, "pl1");
@@ -291,26 +303,11 @@ describe("rest filler sources", () => {
     expect(new URL(calls[0]!.url).pathname).toBe("/v1/playlists/pl1/items");
   });
 
-  it("lists only playlists the user owns or collaborates on", async () => {
-    mockFetch(() =>
-      jsonResponse({
-        items: [
-          { id: "mine", name: "Rest", owner: { id: "spotify-1" }, images: [{ url: "https://i/1" }], items: { total: 12 } },
-          { id: "theirs", name: "Beast Mode", owner: { id: "spotify" }, images: null },
-          { id: "collab", name: "Gym Crew", owner: { id: "friend" }, collaborative: true, tracks: { total: 3 } },
-          null,
-        ],
-      }),
-    );
-    await expect(getMyPlaylists(USER_ID, "spotify-1")).resolves.toEqual([
-      { id: "mine", name: "Rest", trackCount: 12, imageUrl: "https://i/1" },
-      { id: "collab", name: "Gym Crew", trackCount: 3, imageUrl: null },
-    ]);
-  });
-
   it("checks for every rest scope", () => {
     expect(hasRestScopes(null)).toBe(false);
     expect(hasRestScopes("user-read-playback-state user-library-read")).toBe(false);
-    expect(hasRestScopes("user-library-read playlist-read-private playlist-read-collaborative user-read-playback-state")).toBe(true);
+    expect(
+      hasRestScopes("user-library-read playlist-read-private playlist-read-collaborative user-read-playback-state"),
+    ).toBe(true);
   });
 });

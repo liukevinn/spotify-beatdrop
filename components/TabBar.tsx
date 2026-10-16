@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/", label: "Home", icon: "M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" },
   { href: "/library", label: "Library", icon: "M4 5h4v14H4zM10 5h4v14h-4zM16.5 5.5l3.8-1 3 13.6-3.8 1z" },
-  { href: "/history", label: "History", icon: "M12 4a8 8 0 1 1-7.4 5M4 4v5h5M12 8v4l3 2" },
   {
     href: "/settings",
     label: "Settings",
@@ -19,7 +18,7 @@ export function TabBar() {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-black via-black/95 to-transparent pt-6 pb-safe">
-      <ul className="mx-auto grid max-w-md grid-cols-4">
+      <ul className="mx-auto grid max-w-md grid-cols-3">
         {TABS.map((tab) => {
           const active = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
           return (

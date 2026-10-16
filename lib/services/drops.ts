@@ -1,25 +1,19 @@
 import { getDropOrThrow, saveMarkedDrop, updateDrop } from "@/lib/db/drops";
-import { getSettings } from "@/lib/db/settings";
 import { getLatestSet } from "@/lib/db/sets";
 import { AppError } from "@/lib/errors";
-import { computeMarkedDropMs, nudgeDropMs, testStartMs } from "@/lib/logic/drop";
+import { nudgeDropMs, testStartMs } from "@/lib/logic/drop";
 import { formatMs } from "@/lib/logic/format";
 import { getCurrentlyPlaying } from "@/lib/spotify/client";
 import { playOnDevice } from "@/lib/spotify/playback";
 import type { Drop } from "@/lib/types";
 
-/** Saves the drop for whatever is playing now (spec §11.3). */
-export async function markDrop(
-  userId: string,
-  opts: { reactionOffsetMs?: number } = {},
-): Promise<{ drop: Drop; created: boolean; message: string }> {
+/** Saves the drop for whatever is playing now, at the current position (spec §11.3). */
+export async function markDrop(userId: string): Promise<{ drop: Drop; created: boolean; message: string }> {
   const now = await getCurrentlyPlaying(userId);
   if (now.kind === "nothing") throw new AppError("NOTHING_PLAYING");
   if (now.kind === "local") throw new AppError("UNSUPPORTED_TRACK");
 
-  const offset = opts.reactionOffsetMs ?? (await getSettings(userId)).reactionOffsetMs;
-  const dropMs = computeMarkedDropMs(now.progressMs, offset);
-  const { drop, created } = await saveMarkedDrop(userId, now.track, dropMs);
+  const { drop, created } = await saveMarkedDrop(userId, now.track, now.progressMs);
   return { drop, created, message: `Marked drop for ${drop.trackName} at ${formatMs(drop.dropMs)}` };
 }
 
