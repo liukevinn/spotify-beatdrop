@@ -58,7 +58,6 @@ export interface TokenInfo {
   label: string;
   createdAt: string;
   lastUsedAt: string | null;
-  revoked: boolean;
 }
 
 export interface Device {

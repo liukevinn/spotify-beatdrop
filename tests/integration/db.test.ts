@@ -156,7 +156,7 @@ describe.skipIf(!run)("lib/db against Supabase", () => {
 
     expect(await tokens.touchActiveToken(hash)).toEqual({ userId });
     const [listed] = await tokens.listTokens(userId);
-    expect(listed).toMatchObject({ id, label: "iPhone", revoked: false });
+    expect(listed).toMatchObject({ id, label: "iPhone" });
     expect(listed!.lastUsedAt).not.toBeNull();
     expect(listed).not.toHaveProperty("token_hash");
 
@@ -164,6 +164,6 @@ describe.skipIf(!run)("lib/db against Supabase", () => {
     await tokens.revokeToken(userId, id);
     expect(await tokens.touchActiveToken(hash)).toBeNull();
     await expect(tokens.revokeToken(userId, id)).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect((await tokens.listTokens(userId))[0]?.revoked).toBe(true);
+    expect(await tokens.listTokens(userId)).toEqual([]);
   });
 });

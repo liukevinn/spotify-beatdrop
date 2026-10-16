@@ -34,14 +34,8 @@ function NewTokenModal({ token, onClose }: { token: string; onClose: () => void 
         </h2>
         <p className="mt-1 text-sm text-warn">Copy it now. It won&apos;t be shown again.</p>
 
-        <div className="mt-4 rounded-md bg-ink p-3 font-mono text-[13px] break-all text-fg select-all">
-          {token}
-        </div>
-        <button
-          type="button"
-          onClick={copy}
-          className={`${pill.primary} mt-3 min-h-12 w-full`}
-        >
+        <div className="mt-4 rounded-md bg-ink p-3 font-mono text-[13px] break-all text-fg select-all">{token}</div>
+        <button type="button" onClick={copy} className={`${pill.primary} mt-3 min-h-12 w-full`}>
           {copied ? "Copied ✓" : "Copy token"}
         </button>
 
@@ -49,11 +43,7 @@ function NewTokenModal({ token, onClose }: { token: string; onClose: () => void 
           <ShortcutInstructions origin={origin} token={token} />
         </div>
 
-        <button
-          type="button"
-          onClick={onClose}
-          className={`${pill.secondary} mt-6 min-h-12 w-full`}
-        >
+        <button type="button" onClick={onClose} className={`${pill.secondary} mt-6 min-h-12 w-full`}>
           Done
         </button>
       </div>
@@ -97,8 +87,8 @@ export function TokensSection() {
   const revoke = async (token: TokenInfo) => {
     try {
       await api(`/api/tokens/${token.id}`, { method: "DELETE" });
+      setTokens((prev) => prev?.filter((t) => t.id !== token.id) ?? null);
       toast(`Revoked “${token.label}”`);
-      void load();
     } catch (err) {
       toast(errorMessage(err), "error");
     }
@@ -121,11 +111,7 @@ export function TokensSection() {
           placeholder="Label"
           className="min-h-11 min-w-0 flex-1 rounded-full bg-raised px-4 text-[16px] outline-none focus:ring-2 focus:ring-fg"
         />
-        <button
-          type="submit"
-          disabled={creating || !label.trim()}
-          className={`${pill.primary} min-h-11 shrink-0 px-5`}
-        >
+        <button type="submit" disabled={creating || !label.trim()} className={`${pill.primary} min-h-11 shrink-0 px-5`}>
           {creating && <Spinner />} Create
         </button>
       </form>
@@ -135,26 +121,18 @@ export function TokensSection() {
           {tokens.map((token) => (
             <li key={token.id} className="flex min-h-14 items-center justify-between gap-3 py-2">
               <span className="min-w-0">
-                <span className={`block truncate font-medium ${token.revoked ? "text-faint line-through" : ""}`}>
-                  {token.label}
-                </span>
+                <span className="block truncate font-medium">{token.label}</span>
                 <span className="block text-xs text-muted">
-                  {token.revoked
-                    ? "Revoked"
-                    : token.lastUsedAt
-                      ? `Used ${formatTimeAgo(token.lastUsedAt)}`
-                      : "Never used"}
+                  {token.lastUsedAt ? `Used ${formatTimeAgo(token.lastUsedAt)}` : "Never used"}
                 </span>
               </span>
-              {!token.revoked && (
-                <button
-                  type="button"
-                  onClick={() => revoke(token)}
-                  className={`${pill.secondary} min-h-8 shrink-0 px-3 text-[13px]`}
-                >
-                  Revoke
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => revoke(token)}
+                className={`${pill.secondary} min-h-8 shrink-0 px-3 text-[13px]`}
+              >
+                Revoke
+              </button>
             </li>
           ))}
         </ul>

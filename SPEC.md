@@ -460,9 +460,9 @@ If `users.needs_reauth` is true → 401 `REAUTH_REQUIRED`, message `"Log in to D
 - `GET /api/settings` → settings object.
 - `GET /api/playlists` (v1.1) → `{ playlists: [{ id, name, trackCount, imageUrl }] }`, owned/collaborative only; 403 `PLAYLIST_ACCESS_REQUIRED` without the scopes.
 - `PATCH /api/settings` body any of `{ leadMs, queueMode, avoidRepeatWithin, restMs, restSource, nextDropId }` → validated with the same ranges as the DB checks. `restSource` is `null` (= Liked Songs), `{ kind: "liked" }`, `{ kind: "tagged" }` (the other drop songs), or `{ kind: "playlist", id, name }`. `nextDropId` must belong to the user (else 404).
-- `GET /api/tokens` → `{ tokens: [{ id, label, createdAt, lastUsedAt, revoked }] }` (never returns the raw token or hash).
+- `GET /api/tokens` → `{ tokens: [{ id, label, createdAt, lastUsedAt }] }`, active tokens only (never returns the raw token or hash).
 - `POST /api/tokens` body `{ label }` → generates 32 random bytes as base64url, stores the sha256 hash → `{ id, token }` (**raw token returned only this once**).
-- `DELETE /api/tokens/:id` → sets `revoked_at`.
+- `DELETE /api/tokens/:id` → deletes the token (v1.2; it used to set `revoked_at`, and the list hides any such older rows).
 - `GET /api/sets?limit=50` → recent sets, newest first.
 
 ## 10. Frontend specification

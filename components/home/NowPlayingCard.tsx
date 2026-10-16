@@ -1,7 +1,7 @@
 "use client";
 
 import { AlbumArt } from "@/components/AlbumArt";
-import { Card, OpenInSpotify } from "@/components/ui";
+import { Card, OpenSpotify } from "@/components/ui";
 import { formatMs } from "@/lib/logic/format";
 import type { NowPlaying } from "@/lib/types";
 import { useClock } from "./useNowPlaying";
@@ -75,7 +75,7 @@ export function NowPlayingCard({ now, fetchedAt, error }: Props) {
       </div>
 
       <div className="mt-2 border-t border-raised pt-2">
-        <OpenInSpotify trackId={track.id} />
+        <OpenSpotify />
       </div>
     </Card>
   );

@@ -91,13 +91,15 @@ export function SpotifyIcon({ className = "h-[21px] w-[21px]" }: { className?: s
   );
 }
 
-/** "Open in Spotify" link back to a track (required wherever Spotify content is shown). */
-export function OpenInSpotify({ trackId }: { trackId: string }) {
+/**
+ * "Open Spotify" link back to the playing track (required wherever Spotify content is shown).
+ * Opens the app as-is: a track link (open.spotify.com/track/…) would make the iOS app restart
+ * that track, and this is always the track that's already playing.
+ */
+export function OpenSpotify() {
   return (
     <a
-      href={`https://open.spotify.com/track/${encodeURIComponent(trackId)}`}
-      target="_blank"
-      rel="noopener noreferrer"
+      href="spotify://"
       className="inline-flex min-h-8 items-center gap-2 text-[13px] font-semibold text-muted active:text-fg"
     >
       <SpotifyIcon />
