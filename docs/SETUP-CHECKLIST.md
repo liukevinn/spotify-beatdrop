@@ -9,9 +9,9 @@ Do these in order and tick each box as you go. The code is finished. Everything 
 | `.env.local`: `APP_URL`, `SPOTIFY_REDIRECT_URI`, `SESSION_SECRET`, `TOKEN_ENCRYPTION_KEY` | ✅ set |
 | `.env.local`: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | ✅ set. Spotify app `DropSet` created, Web API enabled, 1/5 users (Phase 1) |
 | `.env.local`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | ✅ set. Project `dropset` (us-east-1) in Kevin's Organization, migration applied, connection verified (Phase 2) |
-| Local commit `3360ca9` (removes the duplicate lockfile) | ⏳ not pushed yet (Phase 4) |
+| Production | ✅ <https://dropset-kevin.vercel.app>, deployed with the Vercel CLI (project `dropset-kevin`, GitHub-connected so pushes to `main` auto-deploy), 8 env vars set, Spotify prod redirect URI added (Phases 4–5) |
 | Project moved to `~/Developer`, clean `npm install` | ✅ done. Tests 72/72, typecheck and lint clean (Phase 0) |
-| `package-lock.json` | ⚠️ uncommitted: the reinstall brought in patch-level bumps (e.g. `sharp` 0.35.4 → 0.35.5) |
+| Database | ✅ migrations 0001 and 0002 applied |
 
 ---
 
@@ -94,7 +94,7 @@ This step catches config mistakes before you deploy, while it's still cheap to f
 - [x] Open Spotify on your phone and play something. In DropSet, go to **Settings → Device** and pick your phone.
 - [x] Tag one song: play it, tap **Mark drop** when the drop hits, then tap **Test**. The phone should jump to 3 s before the drop.
 - [x] Hit **Cue** on Home. The phone should start that song about 20 s before the drop.
-- [ ] Stop the dev server with Ctrl-C.
+- [x] Stop the dev server with Ctrl-C.
 
 ---
 
@@ -102,12 +102,12 @@ This step catches config mistakes before you deploy, while it's still cheap to f
 
 The easiest route is importing from GitHub in the browser, which needs no CLI login.
 
-- [ ] Push the pending local commit so GitHub has the latest code:
+- [x] Push the pending local commit so GitHub has the latest code:
   ```bash
   git push origin main
   ```
-- [ ] Go to <https://vercel.com/new> → **Import Git Repository** → pick `liukevinn/spotify-beatdrop`. Authorize the Vercel GitHub app if it asks.
-- [ ] On the configure screen:
+- [x] Go to <https://vercel.com/new> → **Import Git Repository** → pick `liukevinn/spotify-beatdrop`. Authorize the Vercel GitHub app if it asks.
+- [x] On the configure screen:
   - **Project Name**: choose it carefully, because it becomes your URL, `https://<project-name>.vercel.app`. Something like `dropset-kevin` works. The rest of this checklist calls the result `<APP>`, for example `https://dropset-kevin.vercel.app`.
   - Framework Preset: **Next.js** (auto-detected). Leave the build settings at their defaults.
   - Expand **Environment Variables** and add all 8:
@@ -126,17 +126,17 @@ The easiest route is importing from GitHub in the browser, which needs no CLI lo
     > Local and prod share one database, so `TOKEN_ENCRYPTION_KEY` **must be identical** in both. Otherwise refresh tokens saved by one environment can't be decrypted by the other. Once you've set it, never change it. If you do, everyone has to log in again.
     >
     > Tip: you can paste the whole `.env.local` into the first key field and Vercel will split it into separate variables. Then edit `APP_URL` and `SPOTIFY_REDIRECT_URI` to the prod values.
-- [ ] Click **Deploy** and wait for it to go green.
-- [ ] Check the real domain: open the project → **Settings → Domains**. If the production domain isn't exactly the `<APP>` you used, because the name was taken and Vercel added a suffix, then:
+- [x] Click **Deploy** and wait for it to go green.
+- [x] Check the real domain: open the project → **Settings → Domains**. If the production domain isn't exactly the `<APP>` you used, because the name was taken and Vercel added a suffix, then:
   - update `APP_URL` and `SPOTIFY_REDIRECT_URI` under **Settings → Environment Variables**, and
   - go to **Deployments** → latest → **⋯ → Redeploy**. Env var changes only take effect after a redeploy.
-- [ ] Optional: under **Settings → Deployment Protection**, make sure **Vercel Authentication** doesn't cover the **production** domain. If it does, the iOS Shortcut can't reach `/api/cue`. Protection on preview deployments only is fine.
+- [x] Optional: under **Settings → Deployment Protection**, make sure **Vercel Authentication** doesn't cover the **production** domain. If it does, the iOS Shortcut can't reach `/api/cue`. Protection on preview deployments only is fine.
 
 ---
 
 ## Phase 5: Point Spotify at production
 
-- [ ] In the Spotify Developer Dashboard → your app → **Settings** → **Edit**, add a second redirect URI and **save**:
+- [x] In the Spotify Developer Dashboard → your app → **Settings** → **Edit**, add a second redirect URI and **save**:
   ```
   <APP>/api/auth/callback
   ```
