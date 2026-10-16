@@ -12,7 +12,12 @@ vi.mock("@/lib/db/drops", () => ({
 }));
 vi.mock("@/lib/db/settings", () => ({ getSettings: vi.fn(), updateSettings: vi.fn() }));
 vi.mock("@/lib/db/users", () => ({ getUserById: vi.fn() }));
-vi.mock("@/lib/db/sets", () => ({ listSets: vi.fn(), getLatestSet: vi.fn(), insertSet: vi.fn(), updateSetDrop: vi.fn() }));
+vi.mock("@/lib/db/sets", () => ({
+  listSets: vi.fn(),
+  getLatestSet: vi.fn(),
+  insertSet: vi.fn(),
+  updateSetDrop: vi.fn(),
+}));
 vi.mock("@/lib/spotify/playback", () => ({ playOnDevice: vi.fn(), playQueueOnDevice: vi.fn() }));
 vi.mock("@/lib/spotify/client", () => ({
   getCurrentlyPlaying: vi.fn(),
@@ -75,21 +80,37 @@ describe("cueNextSet", () => {
     vi.mocked(dropsDb.listDrops).mockResolvedValue([drop()]);
     const result = await cueNextSet("u1", { source: "shortcut" });
 
-    expect(playback.playOnDevice).toHaveBeenCalledWith("u1", { uri: "spotify:track:t1", name: "Early Drop" }, 0);
-    expect(setsDb.insertSet).toHaveBeenCalledWith("u1", expect.objectContaining({ positionMs: 0, leadMs: 12000, source: "shortcut" }));
+    const [, queue, position] = vi.mocked(playback.playQueueOnDevice).mock.calls[0]!;
+    expect(queue).toEqual({ uris: ["spotify:track:t1"], name: "Early Drop" });
+    expect(position()).toBe(0);
+    expect(setsDb.insertSet).toHaveBeenCalledWith(
+      "u1",
+      expect.objectContaining({ positionMs: 0, leadMs: 12000, source: "shortcut" }),
+    );
     expect(result.message).toBe("▶ Early Drop — drop in 12s");
     expect(result.leadMs).toBe(12000);
+  });
+
+  it("queues backup music behind the drop song so music keeps going into the next rest", async () => {
+    const other = drop({ id: "66666666-6666-4666-8666-666666666666", trackId: "t6", trackUri: "spotify:track:t6" });
+    vi.mocked(dropsDb.listDrops).mockResolvedValue([drop(), other]);
+    vi.mocked(settingsDb.getSettings).mockResolvedValue({ ...settings, queueMode: "sequential" });
+    await cueNextSet("u1", { source: "pwa", dropId: drop().id });
+    const uris = vi.mocked(playback.playQueueOnDevice).mock.calls[0]![1].uris;
+    expect(uris[0]).toBe("spotify:track:t1");
+    expect(uris.slice(1).length).toBeGreaterThan(0);
+    expect(new Set(uris.slice(1))).toEqual(new Set(["spotify:track:t6"]));
   });
 
   it("throws NO_DROPS when nothing is enabled", async () => {
     vi.mocked(dropsDb.listDrops).mockResolvedValue([]);
     await expect(cueNextSet("u1", { source: "pwa" })).rejects.toMatchObject({ code: "NO_DROPS", status: 409 });
-    expect(playback.playOnDevice).not.toHaveBeenCalled();
+    expect(playback.playQueueOnDevice).not.toHaveBeenCalled();
   });
 
   it("doesn't log a set when playback fails", async () => {
     vi.mocked(dropsDb.listDrops).mockResolvedValue([drop({ dropMs: 90000 })]);
-    vi.mocked(playback.playOnDevice).mockRejectedValueOnce(new Error("boom"));
+    vi.mocked(playback.playQueueOnDevice).mockRejectedValueOnce(new Error("boom"));
     await expect(cueNextSet("u1", { source: "pwa" })).rejects.toThrow("boom");
     expect(setsDb.insertSet).not.toHaveBeenCalled();
   });
@@ -105,7 +126,10 @@ describe("markDrop", () => {
 
   it("saves progress minus the reaction offset", async () => {
     vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue(playing);
-    vi.mocked(dropsDb.saveMarkedDrop).mockResolvedValue({ drop: drop({ trackName: "Song", dropMs: 83412 }), created: true });
+    vi.mocked(dropsDb.saveMarkedDrop).mockResolvedValue({
+      drop: drop({ trackName: "Song", dropMs: 83412 }),
+      created: true,
+    });
 
     const result = await markDrop("u1");
     expect(dropsDb.saveMarkedDrop).toHaveBeenCalledWith("u1", playing.track, 83412);
@@ -153,7 +177,13 @@ describe("nudgeLastCued", () => {
 });
 
 describe("Up next", () => {
-  const upNext = drop({ id: "22222222-2222-4222-8222-222222222222", trackId: "t2", trackUri: "spotify:track:t2", trackName: "Chosen", dropMs: 60000 });
+  const upNext = drop({
+    id: "22222222-2222-4222-8222-222222222222",
+    trackId: "t2",
+    trackUri: "spotify:track:t2",
+    trackName: "Chosen",
+    dropMs: 60000,
+  });
 
   it("cue plays the Up next drop and then clears it", async () => {
     vi.mocked(settingsDb.getSettings).mockResolvedValue({ ...settings, nextDropId: upNext.id });
@@ -185,39 +215,92 @@ describe("Up next", () => {
 
 describe("startRest", () => {
   const target = drop({ trackName: "Animal", dropMs: 56_000, durationMs: 230_000 });
-  const other = drop({ id: "33333333-3333-4333-8333-333333333333", trackId: "t3", trackUri: "spotify:track:t3", durationMs: 200_000 });
+  const other = drop({
+    id: "33333333-3333-4333-8333-333333333333",
+    trackId: "t3",
+    trackUri: "spotify:track:t3",
+    durationMs: 200_000,
+  });
   const allScopes = "user-library-read playlist-read-private playlist-read-collaborative";
+  const listening = {
+    kind: "track" as const,
+    progressMs: 30_000,
+    isPlaying: true,
+    track: {
+      id: "t1",
+      uri: "spotify:track:t1",
+      name: "Animal",
+      artists: "3DG",
+      albumArtUrl: null,
+      durationMs: 230_000,
+    },
+  };
 
   beforeEach(() => {
     vi.mocked(dropsDb.listDrops).mockResolvedValue([target]);
     vi.mocked(usersDb.getUserById).mockResolvedValue({ scopes: allScopes } as never);
+    vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue({ kind: "nothing" });
   });
 
-  it("plays rest music from 0:00 and schedules the cut at rest − drop", async () => {
+  it("keeps what's playing and only schedules the cut at rest − drop", async () => {
+    vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue(listening);
     vi.mocked(settingsDb.getSettings).mockResolvedValue({ ...settings, restSource: { kind: "liked" } });
-    vi.mocked(spotify.getLikedFillers).mockResolvedValue([{ uri: "spotify:track:f1", trackId: "f1", durationMs: 240_000 }]);
+    vi.mocked(spotify.getLikedFillers).mockResolvedValue([
+      { uri: "spotify:track:f1", trackId: "f1", durationMs: 240_000 },
+    ]);
 
     const before = Date.now();
     const result = await startRest("u1", { restMs: 210_000, source: "shortcut" });
 
-    const [, queue, position] = vi.mocked(playback.playQueueOnDevice).mock.calls[0]!;
-    expect(queue.uris).toEqual(["spotify:track:f1"]);
-    expect(position()).toBe(0);
-    expect(result.pendingCut).toMatchObject({ setId: "set-1", trackId: "t1", drop: { uri: "spotify:track:t1", name: "Animal" } });
+    expect(playback.playQueueOnDevice).not.toHaveBeenCalled();
     const tappedAt = Date.parse(result.dropAt) - 210_000;
     expect(tappedAt).toBeGreaterThanOrEqual(before);
-    expect(result.pendingCut!.cutAt).toBe(tappedAt + 154_000);
-    // The set is anchored to the tap, so the countdown matches the drop.
+    expect(result.pendingCut).toMatchObject({
+      setId: "set-1",
+      trackId: "t1",
+      drop: { uri: "spotify:track:t1", name: "Animal" },
+      cutAt: tappedAt + 154_000,
+    });
+    // Backup music rides behind the drop song at the cut.
+    expect(new Set(result.pendingCut!.afterUris)).toEqual(new Set(["spotify:track:f1"]));
     expect(setsDb.insertSet).toHaveBeenCalledWith(
       "u1",
-      expect.objectContaining({ positionMs: 0, leadMs: 210_000, source: "shortcut", cuedAt: new Date(tappedAt).toISOString() }),
+      expect.objectContaining({
+        positionMs: 0,
+        leadMs: 210_000,
+        source: "shortcut",
+        cuedAt: new Date(tappedAt).toISOString(),
+      }),
     );
     expect(result.message).toBe("⏱ 3:30 rest → Animal");
   });
 
-  it("skips tagged songs from the source so their drops aren't spoiled", async () => {
+  it("starts backup music from 0:00 when nothing is playing", async () => {
+    vi.mocked(settingsDb.getSettings).mockResolvedValue({ ...settings, restSource: { kind: "liked" } });
+    vi.mocked(spotify.getLikedFillers).mockResolvedValue([
+      { uri: "spotify:track:f1", trackId: "f1", durationMs: 240_000 },
+    ]);
+
+    const result = await startRest("u1", { restMs: 210_000, source: "pwa" });
+    const [, queue, position] = vi.mocked(playback.playQueueOnDevice).mock.calls[0]!;
+    expect(new Set(queue.uris)).toEqual(new Set(["spotify:track:f1"]));
+    expect(position()).toBe(0);
+    expect(result.pendingCut).not.toBeNull();
+  });
+
+  it("treats a paused player as nothing playing", async () => {
+    vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue({ ...listening, isPlaying: false });
     vi.mocked(dropsDb.listDrops).mockResolvedValue([target, other]);
-    vi.mocked(settingsDb.getSettings).mockResolvedValue({ ...settings, restSource: { kind: "playlist", id: "pl1", name: "Rest" } });
+    await startRest("u1", { dropId: target.id, restMs: 210_000, source: "pwa" });
+    expect(playback.playQueueOnDevice).toHaveBeenCalled();
+  });
+
+  it("skips tagged songs in backup music so their drops aren't spoiled", async () => {
+    vi.mocked(dropsDb.listDrops).mockResolvedValue([target, other]);
+    vi.mocked(settingsDb.getSettings).mockResolvedValue({
+      ...settings,
+      restSource: { kind: "playlist", id: "pl1", name: "Rest" },
+    });
     vi.mocked(spotify.getPlaylistFillers).mockResolvedValue([
       { uri: "spotify:track:t3", trackId: "t3", durationMs: 200_000 },
       { uri: "spotify:track:f9", trackId: "f9", durationMs: 200_000 },
@@ -225,22 +308,17 @@ describe("startRest", () => {
 
     await startRest("u1", { dropId: target.id, restMs: 210_000, source: "pwa" });
     expect(spotify.getPlaylistFillers).toHaveBeenCalledWith("u1", "pl1");
-    // Only the untagged song is used; it repeats to cover the whole 3:30 rest.
-    expect(new Set(vi.mocked(playback.playQueueOnDevice).mock.calls[0]![1].uris)).toEqual(new Set(["spotify:track:f9"]));
+    expect(new Set(vi.mocked(playback.playQueueOnDevice).mock.calls[0]![1].uris)).toEqual(
+      new Set(["spotify:track:f9"]),
+    );
   });
 
-  it("uses the settings default rest and other drop songs when no source is set", async () => {
+  it("plays the drop song directly, with backup music behind it, when the rest is shorter than the build-up", async () => {
     vi.mocked(dropsDb.listDrops).mockResolvedValue([target, other]);
-    await startRest("u1", { dropId: target.id, source: "pwa" });
-    expect(new Set(vi.mocked(playback.playQueueOnDevice).mock.calls[0]![1].uris)).toEqual(new Set(["spotify:track:t3"]));
-    expect(setsDb.insertSet).toHaveBeenCalledWith("u1", expect.objectContaining({ leadMs: 210_000 }));
-    expect(spotify.getLikedFillers).not.toHaveBeenCalled();
-  });
-
-  it("plays the drop song directly, with no cut, when the rest is shorter than the build-up", async () => {
-    const result = await startRest("u1", { restMs: 45_000, source: "pwa" });
+    const result = await startRest("u1", { dropId: target.id, restMs: 45_000, source: "pwa" });
     const [, queue, position] = vi.mocked(playback.playQueueOnDevice).mock.calls[0]!;
-    expect(queue.uris).toEqual(["spotify:track:t1"]);
+    expect(queue.uris[0]).toBe("spotify:track:t1");
+    expect(new Set(queue.uris.slice(1))).toEqual(new Set(["spotify:track:t3"]));
     expect(position()).toBeGreaterThanOrEqual(11_000);
     expect(result.pendingCut).toBeNull();
     expect(setsDb.insertSet).toHaveBeenCalledWith("u1", expect.objectContaining({ positionMs: 11_000 }));
@@ -252,22 +330,49 @@ describe("startRest", () => {
     expect(playback.playQueueOnDevice).not.toHaveBeenCalled();
   });
 
-  it("asks for re-login when a source is set but the scopes are missing", async () => {
+  it("asks for re-login when backup music is needed but the scopes are missing", async () => {
     vi.mocked(settingsDb.getSettings).mockResolvedValue({ ...settings, restSource: { kind: "liked" } });
     vi.mocked(usersDb.getUserById).mockResolvedValue({ scopes: "user-read-playback-state" } as never);
-    await expect(startRest("u1", { restMs: 210_000, source: "pwa" })).rejects.toMatchObject({ code: "PLAYLIST_ACCESS_REQUIRED" });
+    await expect(startRest("u1", { restMs: 210_000, source: "pwa" })).rejects.toMatchObject({
+      code: "PLAYLIST_ACCESS_REQUIRED",
+    });
     expect(playback.playQueueOnDevice).not.toHaveBeenCalled();
   });
 
-  it("fails with NO_FILLER when there's nothing to fill the rest with", async () => {
-    await expect(startRest("u1", { restMs: 210_000, source: "pwa" })).rejects.toMatchObject({ code: "NO_FILLER", status: 409 });
+  it("doesn't need the scopes while music is playing (backup falls back to tagged songs)", async () => {
+    vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue(listening);
+    vi.mocked(settingsDb.getSettings).mockResolvedValue({ ...settings, restSource: { kind: "liked" } });
+    vi.mocked(usersDb.getUserById).mockResolvedValue({ scopes: "user-read-playback-state" } as never);
+    await expect(startRest("u1", { restMs: 210_000, source: "pwa" })).resolves.toMatchObject({ ok: true });
+  });
+
+  it("fails with NO_FILLER when nothing is playing and there's no backup music", async () => {
+    await expect(startRest("u1", { restMs: 210_000, source: "pwa" })).rejects.toMatchObject({
+      code: "NO_FILLER",
+      status: 409,
+    });
     expect(setsDb.insertSet).not.toHaveBeenCalled();
   });
 });
 
 describe("performCut", () => {
-  const cut: PendingCut = { setId: "set-1", trackId: "t1", drop: { uri: "spotify:track:t1", name: "Animal" }, cutAt: 1_000_000 };
-  const latestSet = { id: "set-1", dropId: null, trackId: "t1", trackName: "Animal", cuedAt: "", positionMs: 0, leadMs: 90_000, source: "pwa" as const };
+  const cut: PendingCut = {
+    setId: "set-1",
+    trackId: "t1",
+    drop: { uri: "spotify:track:t1", name: "Animal" },
+    afterUris: ["spotify:track:f1", "spotify:track:f2"],
+    cutAt: 1_000_000,
+  };
+  const latestSet = {
+    id: "set-1",
+    dropId: null,
+    trackId: "t1",
+    trackName: "Animal",
+    cuedAt: "",
+    positionMs: 0,
+    leadMs: 90_000,
+    source: "pwa" as const,
+  };
   const playing = {
     kind: "track" as const,
     progressMs: 1000,
@@ -291,11 +396,11 @@ describe("performCut", () => {
     vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue(playing);
   });
 
-  it("starts the drop song from 0:00 at the cut time", async () => {
+  it("starts the drop song from 0:00 at the cut time, with backup music behind it", async () => {
     const clock = fakeClock(900_000);
     await expect(performCut("u1", cut, clock)).resolves.toBe("played");
     const [, queue, position] = vi.mocked(playback.playQueueOnDevice).mock.calls[0]!;
-    expect(queue.uris).toEqual(["spotify:track:t1"]);
+    expect(queue.uris).toEqual(["spotify:track:t1", "spotify:track:f1", "spotify:track:f2"]);
     expect(clock.now()).toBe(1_000_000);
     expect(position()).toBe(0);
   });
@@ -306,6 +411,11 @@ describe("performCut", () => {
     const position = vi.mocked(playback.playQueueOnDevice).mock.calls[0]![2];
     // The final sleep re-measures from the real time, so only its own 150 ms drift remains.
     expect(position()).toBe(150);
+  });
+
+  it("cuts whatever the user chose to play in the meantime", async () => {
+    vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue({ kind: "local", name: "Their own file" });
+    await expect(performCut("u1", cut, fakeClock(900_000))).resolves.toBe("played");
   });
 
   it("skips the cut when a newer rest or cue replaced this one", async () => {
@@ -334,8 +444,14 @@ describe("performCut", () => {
 
 describe("swapRest", () => {
   const original = drop({ trackName: "Animal", dropMs: 56_000 });
-  const swapIn = drop({ id: "44444444-4444-4444-8444-444444444444", trackId: "t4", trackUri: "spotify:track:t4", trackName: "Swapped", dropMs: 30_000, durationMs: 200_000 });
-  const fillerTrack = { id: "f1", uri: "spotify:track:f1", name: "Filler", artists: "A", albumArtUrl: null, durationMs: 200_000 };
+  const swapIn = drop({
+    id: "44444444-4444-4444-8444-444444444444",
+    trackId: "t4",
+    trackUri: "spotify:track:t4",
+    trackName: "Swapped",
+    dropMs: 30_000,
+    durationMs: 200_000,
+  });
 
   /** A rest whose drop is `leftMs` from now. */
   function restEndingIn(leftMs: number) {
@@ -354,53 +470,43 @@ describe("swapRest", () => {
 
   beforeEach(() => {
     vi.mocked(dropsDb.getDropOrThrow).mockResolvedValue(swapIn);
+    vi.mocked(dropsDb.listDrops).mockResolvedValue([original, swapIn]);
     vi.mocked(setsDb.updateSetDrop).mockImplementation(async (_u, _id, swap) => ({ ...restEndingIn(0), ...swap }));
   });
 
-  it("keeps the drop moment and just moves the cut while rest music plays", async () => {
+  it("keeps the drop moment and the music, and just moves the cut", async () => {
     const rest = restEndingIn(100_000);
     vi.mocked(setsDb.getLatestSet).mockResolvedValue(rest);
-    vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue({ kind: "track", progressMs: 1, isPlaying: true, track: fillerTrack });
 
     const result = await swapRest("u1", swapIn.id);
     const dropAt = Date.parse(rest.cuedAt) + rest.leadMs;
     expect(result.dropAt).toBe(new Date(dropAt).toISOString());
-    expect(result.pendingCut).toEqual({
+    expect(result.pendingCut).toMatchObject({
       setId: "set-1",
       trackId: "t4",
       drop: { uri: "spotify:track:t4", name: "Swapped" },
       cutAt: dropAt - 30_000,
     });
+    // The old drop song is fine as backup music behind the new one.
+    expect(new Set(result.pendingCut!.afterUris)).toEqual(new Set(["spotify:track:t1"]));
     expect(playback.playQueueOnDevice).not.toHaveBeenCalled();
-    expect(setsDb.updateSetDrop).toHaveBeenCalledWith("u1", "set-1", { dropId: swapIn.id, trackId: "t4", trackName: "Swapped", positionMs: 0 });
+    expect(setsDb.updateSetDrop).toHaveBeenCalledWith("u1", "set-1", {
+      dropId: swapIn.id,
+      trackId: "t4",
+      trackName: "Swapped",
+      positionMs: 0,
+    });
   });
 
   it("starts the new song partway in when less time is left than its build-up", async () => {
     vi.mocked(setsDb.getLatestSet).mockResolvedValue(restEndingIn(20_000));
     const result = await swapRest("u1", swapIn.id);
     const [, queue, position] = vi.mocked(playback.playQueueOnDevice).mock.calls[0]!;
-    expect(queue.uris).toEqual(["spotify:track:t4"]);
+    expect(queue.uris[0]).toBe("spotify:track:t4");
     // ~20 s left, 30 s build-up → start ~10 s in (a little later for time spent in the test).
     expect(position()).toBeGreaterThanOrEqual(9_900);
     expect(position()).toBeLessThan(10_500);
     expect(result.pendingCut).toBeNull();
-  });
-
-  it("brings rest music back when the old drop song already started", async () => {
-    vi.mocked(setsDb.getLatestSet).mockResolvedValue(restEndingIn(50_000));
-    vi.mocked(spotify.getCurrentlyPlaying).mockResolvedValue({
-      kind: "track",
-      progressMs: 6_000,
-      isPlaying: true,
-      track: { ...fillerTrack, id: "t1", uri: "spotify:track:t1", name: "Animal" },
-    });
-    vi.mocked(dropsDb.listDrops).mockResolvedValue([original, swapIn, drop({ id: "55555555-5555-4555-8555-555555555555", trackId: "t5", trackUri: "spotify:track:t5" })]);
-
-    const result = await swapRest("u1", swapIn.id);
-    const [, queue, position] = vi.mocked(playback.playQueueOnDevice).mock.calls[0]!;
-    expect(queue.uris.every((u) => u !== "spotify:track:t4")).toBe(true);
-    expect(position()).toBe(0);
-    expect(result.pendingCut?.trackId).toBe("t4");
   });
 
   it("refuses when no rest is running", async () => {

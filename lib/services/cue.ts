@@ -5,7 +5,9 @@ import { AppError } from "@/lib/errors";
 import { formatLeadSeconds } from "@/lib/logic/format";
 import { computeStartPosition } from "@/lib/logic/position";
 import { REPEAT_WINDOW_MS, selectNextDrop } from "@/lib/logic/queue";
-import { playOnDevice } from "@/lib/spotify/playback";
+import { musicAfterDrop } from "@/lib/logic/segue";
+import { loadFillersBestEffort } from "@/lib/services/fillers";
+import { playQueueOnDevice } from "@/lib/spotify/playback";
 import type { Drop, SetRecord, SetSource, Settings } from "@/lib/types";
 
 export interface CueResult {
@@ -55,7 +57,10 @@ export async function cueNextSet(userId: string, opts: { dropId?: string; source
   const { drop } = picked;
 
   const { positionMs, leadMs } = computeStartPosition(drop, settings);
-  await playOnDevice(userId, { uri: drop.trackUri, name: drop.trackName }, positionMs);
+  // Backup music behind the drop song keeps music going into the next rest (spec §11.5).
+  const fillers = await loadFillersBestEffort(userId, settings.restSource, drop, picked.enabledDrops);
+  const afterUris = musicAfterDrop(fillers, drop.trackUri);
+  await playQueueOnDevice(userId, { uris: [drop.trackUri, ...afterUris], name: drop.trackName }, () => positionMs);
 
   const set = await insertSet(userId, {
     dropId: drop.id,

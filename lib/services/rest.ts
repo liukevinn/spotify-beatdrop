@@ -1,15 +1,14 @@
 import { getSettings } from "@/lib/db/settings";
 import { getDropOrThrow, listDrops } from "@/lib/db/drops";
 import { getLatestSet, insertSet, updateSetDrop } from "@/lib/db/sets";
-import { getUserById } from "@/lib/db/users";
 import { AppError } from "@/lib/errors";
 import { formatClock } from "@/lib/logic/format";
-import { cutStartPosition, directStartPosition, planRest, type Filler } from "@/lib/logic/segue";
+import { cutStartPosition, directStartPosition, planRest } from "@/lib/logic/segue";
 import { clearUpNext, pickDropForSet } from "@/lib/services/cue";
-import { getCurrentlyPlaying, getLikedFillers, getPlaylistFillers } from "@/lib/spotify/client";
-import { hasRestScopes } from "@/lib/spotify/oauth";
+import { loadFillers, loadFillersBestEffort } from "@/lib/services/fillers";
+import { getCurrentlyPlaying } from "@/lib/spotify/client";
 import { playQueueOnDevice } from "@/lib/spotify/playback";
-import type { Drop, RestSource, SetRecord, SetSource } from "@/lib/types";
+import type { SetRecord, SetSource } from "@/lib/types";
 import { sleep } from "@/lib/utils";
 
 /**
@@ -26,6 +25,8 @@ export interface PendingCut {
   /** The set's drop must still be this track when the cut fires (a swap changes it). */
   trackId: string;
   drop: { uri: string; name: string };
+  /** Backup music queued behind the drop song, so music continues after it. */
+  afterUris: string[];
   /** Epoch ms when the drop song must start from 0:00. */
   cutAt: number;
 }
@@ -42,30 +43,20 @@ export interface RestResult {
   pendingCut: PendingCut | null;
 }
 
-/**
- * Filler candidates, best first: the rest source minus every tagged song (so drops aren't
- * spoiled), else the user's other tagged songs. With no source set, the tagged songs.
- */
-async function loadFillers(userId: string, source: RestSource | null, drop: Drop, enabledDrops: Drop[]): Promise<Filler[]> {
-  const otherDrops = enabledDrops
-    .filter((d) => d.id !== drop.id)
-    .map((d) => ({ uri: d.trackUri, durationMs: d.durationMs }));
-  if (!source) return otherDrops;
-
-  const user = await getUserById(userId);
-  if (!hasRestScopes(user?.scopes ?? null)) throw new AppError("PLAYLIST_ACCESS_REQUIRED");
-
-  const fromSource =
-    source.kind === "liked" ? await getLikedFillers(userId) : await getPlaylistFillers(userId, source.id);
-  const tagged = new Set(enabledDrops.map((d) => d.trackId));
-  tagged.add(drop.trackId);
-  const untagged = fromSource.filter((f) => !tagged.has(f.trackId));
-  return untagged.length > 0 ? untagged : otherDrops;
+/** True when Spotify is playing something the rest should leave alone. Errors count as no. */
+async function isMusicPlaying(userId: string): Promise<boolean> {
+  try {
+    const now = await getCurrentlyPlaying(userId);
+    return now.kind === "local" || (now.kind === "track" && now.isPlaying);
+  } catch {
+    return false;
+  }
 }
 
 /**
- * "Start rest" (spec §11.5): starts rest music now and logs the set. The caller must run
- * `pendingCut` (via `performCut`) after responding, so the drop lands `restMs` after the tap.
+ * "Start rest" (spec §11.5): leaves whatever is playing alone (or starts backup music if
+ * nothing is) and logs the set. The caller must run `pendingCut` (via `performCut`) after
+ * responding, so the drop lands `restMs` after the tap.
  */
 export async function startRest(
   userId: string,
@@ -74,19 +65,26 @@ export async function startRest(
   const tappedAt = Date.now();
   const settings = await getSettings(userId);
   const restMs = opts.restMs ?? settings.restMs;
-  const picked = await pickDropForSet(userId, settings, opts.dropId);
+  const [picked, keepPlaying] = await Promise.all([
+    pickDropForSet(userId, settings, opts.dropId),
+    isMusicPlaying(userId),
+  ]);
   const { drop } = picked;
 
   if (restMs - drop.dropMs > MAX_CUT_WAIT_MS) throw new AppError("REST_TOO_LONG");
-  const fillers = restMs > drop.dropMs ? await loadFillers(userId, settings.restSource, drop, picked.enabledDrops) : [];
-  const plan = planRest({ restMs, drop, fillers });
+  // Backup music is required only when nothing is playing and there's time to fill.
+  const needsBackup = !keepPlaying && restMs > drop.dropMs;
+  const fillers = needsBackup
+    ? await loadFillers(userId, settings.restSource, drop, picked.enabledDrops)
+    : await loadFillersBestEffort(userId, settings.restSource, drop, picked.enabledDrops);
+  const plan = planRest({ restMs, drop, fillers, keepPlaying });
   if (!plan) throw new AppError("NO_FILLER");
 
   if (plan.kind === "direct") {
-    await playQueueOnDevice(userId, { uris: [drop.trackUri], name: drop.trackName }, () =>
+    await playQueueOnDevice(userId, { uris: [drop.trackUri, ...plan.afterUris], name: drop.trackName }, () =>
       directStartPosition(plan, Date.now() - tappedAt),
     );
-  } else {
+  } else if (plan.fillerUris.length > 0) {
     await playQueueOnDevice(userId, { uris: plan.fillerUris, name: "your rest music" }, () => 0);
   }
 
@@ -94,7 +92,7 @@ export async function startRest(
     dropId: drop.id,
     trackId: drop.trackId,
     trackName: drop.trackName,
-    // Where the drop song itself starts: 0 when rest music leads into it.
+    // Where the drop song itself starts: 0 when the cut leads into it.
     positionMs: plan.kind === "direct" ? plan.positionMs : 0,
     leadMs: restMs,
     source: opts.source,
@@ -115,6 +113,7 @@ export async function startRest(
             setId: set.id,
             trackId: drop.trackId,
             drop: { uri: drop.trackUri, name: drop.trackName },
+            afterUris: plan.afterUris,
             cutAt: tappedAt + plan.cutAfterMs,
           }
         : null,
@@ -134,7 +133,8 @@ export interface SwapResult {
 
 /**
  * "Swap song" (spec §11.5): changes the drop song of the running rest while keeping the
- * same drop moment. The old cut sees the set's track change and stands down.
+ * same drop moment. The music keeps playing; only the cut moves. The old cut sees the set's
+ * track change and stands down.
  */
 export async function swapRest(userId: string, dropId: string): Promise<SwapResult> {
   const swappedAt = Date.now();
@@ -142,8 +142,15 @@ export async function swapRest(userId: string, dropId: string): Promise<SwapResu
   const dropAt = latest ? Date.parse(latest.cuedAt) + latest.leadMs : 0;
   if (!latest || dropAt - swappedAt < 1000) throw new AppError("NO_ACTIVE_REST");
 
-  const drop = await getDropOrThrow(userId, dropId);
+  const [drop, settings, enabledDrops] = await Promise.all([
+    getDropOrThrow(userId, dropId),
+    getSettings(userId),
+    listDrops(userId, { enabledOnly: true }),
+  ]);
   const remainingMs = dropAt - swappedAt;
+  const fillers = await loadFillersBestEffort(userId, settings.restSource, drop, enabledDrops);
+  const plan = planRest({ restMs: remainingMs, drop, fillers, keepPlaying: true })!;
+
   const result = (set: SetRecord, pendingCut: PendingCut | null): SwapResult => ({
     ok: true,
     set,
@@ -152,42 +159,31 @@ export async function swapRest(userId: string, dropId: string): Promise<SwapResu
     message: `⇄ ${drop.trackName} — drop in ${formatClock(remainingMs)}`,
     pendingCut,
   });
-  const cutFor = (setId: string): PendingCut => ({
-    setId,
-    trackId: drop.trackId,
-    drop: { uri: drop.trackUri, name: drop.trackName },
-    cutAt: dropAt - drop.dropMs,
-  });
   const logSwap = (positionMs: number) =>
     updateSetDrop(userId, latest.id, { dropId: drop.id, trackId: drop.trackId, trackName: drop.trackName, positionMs });
 
   // Too little time left for the new song's build-up: start it partway in, right now.
-  if (remainingMs <= drop.dropMs) {
-    const plan = { positionMs: drop.dropMs - remainingMs, durationMs: drop.durationMs };
+  if (plan.kind === "direct") {
     const set = await logSwap(plan.positionMs);
-    await playQueueOnDevice(userId, { uris: [drop.trackUri], name: drop.trackName }, () =>
+    await playQueueOnDevice(userId, { uris: [drop.trackUri, ...plan.afterUris], name: drop.trackName }, () =>
       directStartPosition(plan, Date.now() - swappedAt),
     );
     return result(set, null);
   }
 
-  // Rest music is still playing (it covers the whole rest): just move the cut.
-  const now = await getCurrentlyPlaying(userId);
-  const oldDropPlaying = now.kind === "track" && now.track.id === latest.trackId;
-  if (!oldDropPlaying) return result(await logSwap(0), cutFor(latest.id));
-
-  // The old drop song already started: bring rest music back, then cut to the new song.
-  const [settings, enabledDrops] = await Promise.all([getSettings(userId), listDrops(userId, { enabledOnly: true })]);
-  const fillers = await loadFillers(userId, settings.restSource, drop, enabledDrops);
-  const plan = planRest({ restMs: remainingMs, drop, fillers });
-  if (!plan || plan.kind !== "timed") throw new AppError("NO_FILLER");
-  await playQueueOnDevice(userId, { uris: plan.fillerUris, name: "your rest music" }, () => 0);
-  return result(await logSwap(0), cutFor(latest.id));
+  return result(await logSwap(0), {
+    setId: latest.id,
+    trackId: drop.trackId,
+    drop: { uri: drop.trackUri, name: drop.trackName },
+    afterUris: plan.afterUris,
+    cutAt: dropAt - drop.dropMs,
+  });
 }
 
 /**
  * Waits until `cut.cutAt`, then starts the drop song from 0:00 (or as far in as the cut
- * is late). Skips it if a newer set replaced this rest or the user paused. Never throws.
+ * is late), with backup music queued behind it. Skips it if a newer set replaced this
+ * rest, the rest was swapped, or the user paused. Never throws.
  */
 export async function performCut(
   userId: string,
@@ -202,7 +198,7 @@ export async function performCut(
     if (playing.kind === "track" && !playing.isPlaying) return "paused";
 
     await clock.sleep(Math.max(0, cut.cutAt - clock.now()));
-    await playQueueOnDevice(userId, { uris: [cut.drop.uri], name: cut.drop.name }, () =>
+    await playQueueOnDevice(userId, { uris: [cut.drop.uri, ...cut.afterUris], name: cut.drop.name }, () =>
       cutStartPosition(cut.cutAt, clock.now()),
     );
     return "played";

@@ -77,7 +77,7 @@ export function RestSourceSection() {
   return (
     <Card>
       <div className="flex items-start justify-between">
-        <SectionLabel>Rest music</SectionLabel>
+        <SectionLabel>Backup music</SectionLabel>
         {!needsAccess && (
           <button
             type="button"
@@ -90,8 +90,8 @@ export function RestSourceSection() {
         )}
       </div>
       <p className="-mt-1 mb-3 text-sm text-muted">
-        Plays during Start rest, then hands off to your drop song. Songs you&apos;ve tagged are skipped so their drops
-        stay fresh.
+        Rests keep whatever you&apos;re playing. DropSet plays this only when nothing is, and after each drop song.
+        Tagged songs are skipped so their drops stay fresh.
       </p>
 
       {needsAccess && (
@@ -103,7 +103,7 @@ export function RestSourceSection() {
         </div>
       )}
 
-      <ul className="-mx-2 flex flex-col" role="radiogroup" aria-label="Rest music">
+      <ul className="-mx-2 flex flex-col" role="radiogroup" aria-label="Backup music">
         <SourceRow
           visible={open || needsAccess || choice === "liked"}
           active={choice === "liked"}

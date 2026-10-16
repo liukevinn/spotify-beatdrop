@@ -50,7 +50,9 @@ export function RestCountdown({ rest, drops, swapping, onSwap, onDone }: Props) 
     <Card className={dropped ? "bg-accent text-ink" : ""}>
       <div className="flex items-start justify-between gap-3" aria-live="polite">
         <div className="min-w-0">
-          <p className={`text-sm font-bold ${dropped ? "text-ink/70" : "text-muted"}`}>{dropped ? "Lift" : "Drop in"}</p>
+          <p className={`text-sm font-bold ${dropped ? "text-ink/70" : "text-muted"}`}>
+            {dropped ? "Lift" : "Drop in"}
+          </p>
           <p className="mt-1 text-[64px] font-bold leading-none tabular-nums tracking-tighter">
             {dropped ? "Drop!" : formatClock(Math.ceil(leftMs / 1000) * 1000)}
           </p>

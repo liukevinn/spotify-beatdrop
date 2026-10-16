@@ -35,7 +35,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           on the drop.
         </h1>
         <p className="mt-5 max-w-xs text-base leading-relaxed text-muted">
-          Rest music plays while you recover, then your song hits its drop the moment your rest ends.
+          Keep your music going while you rest. Your next song hits its drop the moment the rest ends.
         </p>
       </div>
 

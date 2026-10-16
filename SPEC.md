@@ -87,7 +87,7 @@ Key properties:
 
 1. Before or between sets, the user optionally picks the song for the next set on Home (**Up next**).
 2. The user finishes a set, racks the bar, and presses the Action button (Shortcut → `POST /api/rest`) or taps **Start rest**. The rest length is the Settings default (e.g. 3:30), or the chip selected on Home for this set.
-3. The server starts rest music (from the user's rest source) from the beginning of a song. At `tap + (rest − drop_ms)` it cuts to the drop song from 0:00, so the drop lands when the rest ends (Section 11.5). Music plays throughout, so the phone stays reachable via Spotify Connect while locked.
+3. The server leaves whatever is playing alone (the last drop song, or anything the user picks in Spotify). Only if nothing is playing does it start backup music from the user's rest source. At `tap + (rest − drop_ms)` it cuts to the drop song from 0:00, so the drop lands when the rest ends (Section 11.5). Music plays throughout, so the phone stays reachable via Spotify Connect while locked.
 4. The notification reads `⏱ 3:30 rest → Song Name`. Home shows a live countdown.
 5. The drop hits as the rest ends; the user starts the first rep. Up next resets to auto.
 
@@ -514,7 +514,7 @@ Top to bottom:
 - **Reaction offset:** slider 0–600 ms, step 25.
 - **Queue mode:** Shuffle / Sequential.
 - **Avoid repeats within:** stepper 0–20 sets.
-- **Rest music** (v1.1): Liked Songs, the user's own/collaborative playlists (`GET /api/playlists`), or "My other drop songs". Without the scopes, show "Grant playlist access" → `/api/auth/login`.
+- **Backup music** (v1.1): played only when nothing is playing at Start rest, and queued behind drop songs. Liked Songs, the user's own/collaborative playlists (`GET /api/playlists`), or "My other drop songs". Collapsed to the current choice with a Change button. Without the scopes, show "Grant playlist access" → `/api/auth/login`.
 - **Shortcut tokens:** create (label input) → modal showing the token once with a copy button and the Shortcut instructions (Section 14); list with revoke.
 - **Log out.**
 
@@ -606,38 +606,45 @@ async function playOnDevice(userId, trackUri, positionMs):
 
 ### 11.5 Start rest (v1.1)
 
-Goal: the drop lands exactly `rest` ms after the tap, with rest music that starts at the beginning of a song and a switch to the drop song at its 0:00.
+Goal: the drop lands exactly `rest` ms after the tap. During the rest DropSet leaves the user's music alone (they can play anything); at the cut it switches to the drop song at 0:00.
 
 ```
 tappedAt = now
+playing = currently-playing is a playing track or a local file (errors → false)
 cut = rest - drop_ms
-if cut <= 0: play drop at (drop_ms - rest) + (now - tappedAt); done   // rest shorter than the build-up
 if cut > 285 s → REST_TOO_LONG                                       // must fit one 300 s function run
 
-fillers = rest-source tracks (100 most recent likes, or the first 100 playlist items)
+fillers ("backup music") = rest-source tracks (100 most recent likes, or the first 100 playlist items)
           minus local files, episodes, tracks < 30 s, the drop itself,
           and every tagged drop (so drops aren't spoiled)
-          if that leaves nothing → the other enabled drops; if still nothing → NO_FILLER
+          if that leaves nothing → the other enabled drops
           (no rest source set → the other enabled drops)
-queue = random fillers (cycling if the pool is small) until sum(duration − 12 s) ≥ rest + 12 s
-        // outlasts the whole rest even if Spotify's crossfade (≤ 12 s) shortens every hand-off,
-        // so a swap can move the cut as late as the drop moment
+          loading is required (errors surface, e.g. PLAYLIST_ACCESS_REQUIRED) only when
+          !playing and cut > 0; otherwise best effort, falling back to the other drops
+after = random fillers until sum(duration − 12 s) ≥ 12 min           // queued behind every drop song
 
-play queue from 0:00 (shuffle/repeat off, as in Section 11.4 with the device fallback)
+if cut <= 0: play [drop, ...after] with drop at (drop_ms - rest) + (now - tappedAt); done
+if playing:  start nothing                                           // keep the user's music
+else:        fillers empty → NO_FILLER
+             play random fillers from 0:00 until sum(duration − 12 s) ≥ rest + 12 s
+             // outlasts the whole rest even if Spotify's crossfade (≤ 12 s) shortens every
+             // hand-off, so a swap can move the cut as late as the drop moment
+
 log the set with cued_at = tappedAt, lead_ms = rest
 respond, then performCut:
     sleep until cutAt − 2 s
     skip if the user's latest set is no longer this one (a newer rest/cue), its track changed (a swap), or Spotify is paused
     sleep until cutAt (re-measured, so earlier timer drift doesn't accumulate)
-    play [drop] at position max(0, now − cutAt)                       // late cut → start slightly in
+    play [drop, ...after] with drop at max(0, now − cutAt)            // late cut → start slightly in
 ```
 
-**Swap song** (`swapRest`): `dropAt` stays fixed; `left = dropAt − now`.
+`after` matters because a silent player at cut time reads as "paused" and the cut stands down. Queuing backup music behind every drop song (rest cuts, direct starts, and "Start in Ns" cues) keeps music going through the set and into the next rest, so the next Start rest finds something playing.
+
+**Swap song** (`swapRest`): `dropAt` stays fixed; `left = dropAt − now`. The music is never replaced.
 
 ```
-left <= new.drop_ms         → play the new song now at new.drop_ms − left (+ elapsed); no cut
-rest music still playing    → just schedule a cut at dropAt − new.drop_ms
-old drop song already on    → plan rest music for `left` (as above, from 0:00), then cut
+left <= new.drop_ms → play [new, ...after] now at new.drop_ms − left (+ elapsed); no cut
+otherwise           → schedule a cut at dropAt − new.drop_ms
 update the set to the new drop/track; the old cut sees the track change and stands down
 ```
 
