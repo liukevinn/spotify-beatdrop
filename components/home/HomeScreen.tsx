@@ -20,7 +20,10 @@ interface Me {
   deviceLinked: boolean;
   playlistAccess: boolean;
 }
-type Action = "mark" | "rest" | "cue" | "nudge" | "upnext" | "swap";
+type Action = "mark" | "rest" | "cue" | "nudge" | "upnext";
+
+/** Changing the rest's drop this close to it can't land in time; Up next moves on to the next set. */
+const REST_CHANGE_CUTOFF_MS = 3000;
 
 /** A set cued recently enough that its drop is still ahead (or just hit). */
 function activeRestFrom(set: SetRecord | null): ActiveRest | null {
@@ -38,26 +41,37 @@ export function HomeScreen() {
   const [restMs, setRestMs] = useState<number | null>(null);
   const [lastSet, setLastSet] = useState<SetRecord | null>(null);
   const [activeRest, setActiveRest] = useState<ActiveRest | null>(null);
+  /** True while the running rest's drop can still be changed from Up next. */
+  const [restChangeable, setRestChangeable] = useState(false);
   const [busy, setBusy] = useState<Action | null>(null);
 
   const loadSettings = useCallback(
     () =>
-      api<Settings>("/api/settings").then((s) => {
-        setSettings(s);
-        setRestMs((current) => current ?? s.restMs);
-      }, () => {}),
+      api<Settings>("/api/settings").then(
+        (s) => {
+          setSettings(s);
+          setRestMs((current) => current ?? s.restMs);
+        },
+        () => {},
+      ),
     [],
   );
 
   useEffect(() => {
     api<Me>("/api/me").then(setMe, () => {});
     void loadSettings();
-    api<{ drops: Drop[] }>("/api/drops").then((r) => setDrops(r.drops), () => {});
-    api<{ sets: SetRecord[] }>("/api/sets?limit=1").then((r) => {
-      const set = r.sets[0] ?? null;
-      setLastSet(set);
-      setActiveRest(activeRestFrom(set));
-    }, () => {});
+    api<{ drops: Drop[] }>("/api/drops").then(
+      (r) => setDrops(r.drops),
+      () => {},
+    );
+    api<{ sets: SetRecord[] }>("/api/sets?limit=1").then(
+      (r) => {
+        const set = r.sets[0] ?? null;
+        setLastSet(set);
+        setActiveRest(activeRestFrom(set));
+      },
+      () => {},
+    );
   }, [loadSettings]);
 
   /** Runs one action at a time and surfaces the server's message as a toast. */
@@ -70,7 +84,8 @@ export function HomeScreen() {
         if (message) toast(message);
       } catch (err) {
         toast(errorMessage(err), "error");
-        if (err instanceof ApiError && err.code === "PLAYLIST_ACCESS_REQUIRED") setMe((m) => m && { ...m, playlistAccess: false });
+        if (err instanceof ApiError && err.code === "PLAYLIST_ACCESS_REQUIRED")
+          setMe((m) => m && { ...m, playlistAccess: false });
       } finally {
         setBusy(null);
       }
@@ -83,7 +98,10 @@ export function HomeScreen() {
       const res = await api<{ message: string }>("/api/drops/mark", { method: "POST", body: {} });
       navigator.vibrate?.(40);
       void refresh();
-      api<{ drops: Drop[] }>("/api/drops").then((r) => setDrops(r.drops), () => {});
+      api<{ drops: Drop[] }>("/api/drops").then(
+        (r) => setDrops(r.drops),
+        () => {},
+      );
       return res.message;
     });
 
@@ -113,21 +131,23 @@ export function HomeScreen() {
       return res.message;
     });
 
-  /** Same drop moment, different song. Up next is left alone. */
-  const swapSong = (drop: Drop) =>
-    run("swap", async () => {
-      const res = await api<{ message: string; set: SetRecord }>("/api/rest/swap", {
-        method: "POST",
-        body: { dropId: drop.id },
-      });
-      setLastSet(res.set);
-      setActiveRest((r) => r && { ...r, trackName: res.set.trackName, dropId: res.set.dropId });
-      return res.message;
-    });
-
-  const setUpNext = (nextDropId: string | null) =>
+  /**
+   * Up next. During a rest it's the song about to drop, so a pick changes this rest's drop
+   * (same drop moment; starts partway in if its build-up no longer fits). Otherwise it's
+   * the pick for the next rest/cue.
+   */
+  const setUpNext = (dropId: string | null) =>
     run("upnext", async () => {
-      setSettings(await api<Settings>("/api/settings", { method: "PATCH", body: { nextDropId } }));
+      if (restChangeable && dropId) {
+        const res = await api<{ message: string; set: SetRecord }>("/api/rest/swap", {
+          method: "POST",
+          body: { dropId },
+        });
+        setLastSet(res.set);
+        setActiveRest((r) => r && { ...r, trackName: res.set.trackName, dropId: res.set.dropId });
+        return res.message;
+      }
+      setSettings(await api<Settings>("/api/settings", { method: "PATCH", body: { nextDropId: dropId } }));
       return null;
     });
 
@@ -137,6 +157,14 @@ export function HomeScreen() {
       void refresh();
       return res.message;
     });
+
+  useEffect(() => {
+    const changeableForMs = activeRest ? activeRest.dropAt - REST_CHANGE_CUTOFF_MS - Date.now() : 0;
+    setRestChangeable(changeableForMs > 0);
+    if (changeableForMs <= 0) return;
+    const timer = setTimeout(() => setRestChangeable(false), changeableForMs);
+    return () => clearTimeout(timer);
+  }, [activeRest]);
 
   const clearActiveRest = useCallback(() => setActiveRest(null), []);
   const somethingPlaying = Boolean(now?.playing);
@@ -170,13 +198,7 @@ export function HomeScreen() {
 
       <div className="flex flex-col gap-3">
         {activeRest ? (
-          <RestCountdown
-            rest={activeRest}
-            drops={drops}
-            swapping={busy === "swap"}
-            onSwap={swapSong}
-            onDone={clearActiveRest}
-          />
+          <RestCountdown rest={activeRest} onDone={clearActiveRest} />
         ) : (
           <NowPlayingCard now={now} fetchedAt={fetchedAt} error={error} />
         )}
@@ -196,6 +218,7 @@ export function HomeScreen() {
           drops={drops}
           nextDropId={settings.nextDropId}
           queueMode={settings.queueMode}
+          restDropId={restChangeable ? (activeRest?.dropId ?? null) : null}
           busy={busy !== null}
           onChange={setUpNext}
         />
@@ -206,7 +229,12 @@ export function HomeScreen() {
       )}
 
       <div className="flex flex-col items-center gap-2">
-        <button type="button" onClick={startRest} disabled={busy !== null} className={`${pill.primary} min-h-16 w-full text-lg`}>
+        <button
+          type="button"
+          onClick={startRest}
+          disabled={busy !== null}
+          className={`${pill.primary} min-h-16 w-full text-lg`}
+        >
           {busy === "rest" ? (
             <Spinner className="h-6 w-6 border-[3px]" />
           ) : (

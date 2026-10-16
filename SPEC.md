@@ -486,11 +486,11 @@ Top to bottom:
 
 1. **Now playing card.** Polls `GET /api/player/now` every 2 s while `document.visibilityState === 'visible'`; stops when hidden. Shows art, name, artists, progress bar, and a "Tagged at 1:23.4" badge if tagged.
 2. **Mark drop** button. Large and primary while something is playing. Calls `POST /api/drops/mark`. Show a toast with `message`. Trigger haptic feedback via `navigator.vibrate` where supported (it no-ops on iOS; that's fine).
-3. **Up next card** (v1.1). Shows the chosen drop or "Auto · Shuffle/In order". Tapping expands a picker of enabled drops plus Auto; saves `nextDropId` via `PATCH /api/settings`.
+3. **Up next card** (v1.1). The song that drops next. **During a rest** (until 3 s before its drop) it shows the rest's drop song, and picking another calls `POST /api/rest/swap`: same drop moment, starting partway in if the new build-up no longer fits; no Auto option. **Otherwise** it shows the chosen drop or "Auto · Shuffle/In order", and a pick (or Auto) saves `nextDropId` via `PATCH /api/settings`.
 4. **Rest chips** (v1.1). 1:30, 2:00, 2:30, 3:00, 3:30, 4:00, 5:00 plus the default (marked). Choice applies to the next rest only; starts at the default.
 5. **Start rest** button. Very large, the most prominent element. Calls `POST /api/rest` with the selected `restMs` and shows a toast with `message`.
 6. **Start in Ns** button (the v1 cue, now secondary). Calls `POST /api/cue`.
-7. **Countdown** (v1.1). While a set's drop is still ahead (`cuedAt + leadMs`), the Now playing card is replaced by a live "Drop in m:ss" countdown, then "Drop!" for a few seconds. **Swap song** (hidden in the last 3 s) opens the drop list; picking one calls `POST /api/rest/swap`. Up next is unaffected.
+7. **Countdown** (v1.1). While a set's drop is still ahead (`cuedAt + leadMs`), the Now playing card is replaced by a live "Drop in m:ss" countdown, then "Drop!" for a few seconds. Changing the rest's song is done from the Up next card.
 8. **Last set card.** Most recent set: track name, time ago, rest/lead, and "The drop came…" buttons `1s early  ¼s early  ¼s late  1s late` (calls `POST /api/cue/nudge-last`).
 9. If no device is linked, a warning links to Settings. If a rest source is set but `playlistAccess` is false, a warning links to Settings.
 

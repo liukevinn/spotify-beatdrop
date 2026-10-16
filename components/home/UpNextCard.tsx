@@ -10,6 +10,11 @@ interface Props {
   drops: Drop[];
   nextDropId: string | null;
   queueMode: QueueMode;
+  /**
+   * The drop of the rest that's running, while it can still be changed. Up next then means
+   * "the song about to drop": picking one changes this rest's drop (no Auto option).
+   */
+  restDropId: string | null;
   busy: boolean;
   onChange: (dropId: string | null) => void;
 }
@@ -36,16 +41,21 @@ export function ShuffleTile({ size }: { size: number }) {
   );
 }
 
-/** "Up next": which drop the next rest/cue uses. Expands inline into a track list. */
-export function UpNextCard({ drops, nextDropId, queueMode, busy, onChange }: Props) {
+/**
+ * "Up next": the song that drops next. During a rest that's the rest's drop song; otherwise
+ * the pick for the next rest/cue. Expands inline into a track list.
+ */
+export function UpNextCard({ drops, nextDropId, queueMode, restDropId, busy, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const enabled = drops.filter((d) => d.enabled);
-  const selected = enabled.find((d) => d.id === nextDropId) ?? null;
+  const inRest = restDropId !== null;
+  const currentId = inRest ? restDropId : nextDropId;
+  const selected = drops.find((d) => d.id === currentId) ?? null;
   const autoLabel = queueMode === "shuffle" ? "Shuffle" : "In order";
 
   const choose = (id: string | null) => {
     setOpen(false);
-    if (id !== nextDropId) onChange(id);
+    if (id !== currentId) onChange(id);
   };
 
   return (
@@ -80,7 +90,8 @@ export function UpNextCard({ drops, nextDropId, queueMode, busy, onChange }: Pro
             <span className="block truncate text-sm text-muted">
               {selected ? (
                 <>
-                  {selected.artists} · drop at <span className="tabular-nums">{formatMs(selected.dropMs)}</span>
+                  {inRest ? "Drops at the end of this rest" : selected.artists} · drop at{" "}
+                  <span className="tabular-nums">{formatMs(selected.dropMs)}</span>
                 </>
               ) : (
                 "Picks a song you haven't played recently"
@@ -91,11 +102,13 @@ export function UpNextCard({ drops, nextDropId, queueMode, busy, onChange }: Pro
       )}
 
       {open && (
-        <DropList drops={enabled} selectedId={nextDropId} label="Up next" onPick={(d) => choose(d.id)}>
-          <PickRow selected={nextDropId === null} onClick={() => choose(null)}>
-            <ShuffleTile size={48} />
-            <RowText selected={nextDropId === null} title="Auto" subtitle={`${autoLabel}, skipping recent songs`} />
-          </PickRow>
+        <DropList drops={enabled} selectedId={currentId} label="Up next" onPick={(d) => choose(d.id)}>
+          {!inRest && (
+            <PickRow selected={nextDropId === null} onClick={() => choose(null)}>
+              <ShuffleTile size={48} />
+              <RowText selected={nextDropId === null} title="Auto" subtitle={`${autoLabel}, skipping recent songs`} />
+            </PickRow>
+          )}
         </DropList>
       )}
     </section>
